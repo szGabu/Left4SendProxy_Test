@@ -33,7 +33,6 @@
 #endif
 #include "extension.h"
 
-bool g_bDoLateUpdate = false;
 /**
  * @file extension.cpp
  * @brief Implement extension code here.
