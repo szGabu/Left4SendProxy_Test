@@ -29,8 +29,6 @@ USEMETA = true
 
 OBJECTS = sdk/smsdk_ext.cpp extension.cpp
 
-ENGINE = tf2
-
 ##############################################
 ### CONFIGURE ANY OTHER FLAGS/OPTIONS HERE ###
 ##############################################
