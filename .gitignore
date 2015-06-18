@@ -14,3 +14,6 @@
 
 Debug*/
 Release*/
+*.suo
+*.user
+*.sdf
