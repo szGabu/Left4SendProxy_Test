@@ -29,6 +29,10 @@ USEMETA = true
 
 OBJECTS = sdk/smsdk_ext.cpp extension.cpp
 
+ENGINE=tf2
+
+INCLUDE += -I. -Isdk -I$(SMSDK)/public -I$(SOURCEPAWN)/include
+
 ##############################################
 ### CONFIGURE ANY OTHER FLAGS/OPTIONS HERE ###
 ##############################################
@@ -169,8 +173,6 @@ else
 	INCLUDE += -I$(HL2SDK)/public/game/server
 	METAMOD = $(MMSOURCE)/core
 endif
-
-INCLUDE += -I. -Isdk -I$(SMSDK)/public -I$(SOURCEPAWN)/include
 
 ifeq "$(USEMETA)" "true"
 
