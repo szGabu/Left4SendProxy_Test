@@ -14,9 +14,8 @@
 #HL2SDK_CSGO = ../../../hl2sdk-csgo
 HL2SDK_TF2 = ../hl2sdk-tf2
 
-SMSDK = ../sourcemod-1.8-dev
+SMSDK = ../sourcemod-1.8
 MMSOURCE = ../metamod-source-1.11-dev
-SOURCEPAWN = ../sourcepawn-master
 
 #####################################
 ### EDIT BELOW FOR OTHER PROJECTS ###
@@ -31,7 +30,7 @@ OBJECTS = sdk/smsdk_ext.cpp extension.cpp
 
 ENGINE=tf2
 
-INCLUDE += -I. -Isdk -I$(SMSDK)/public -I$(SOURCEPAWN)/include
+INCLUDE += -I. -Isdk -I$(SMSDK)/public -I$(SMSDK)/sourcepawn/include
 
 ##############################################
 ### CONFIGURE ANY OTHER FLAGS/OPTIONS HERE ###
