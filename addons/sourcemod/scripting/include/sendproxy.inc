@@ -20,6 +20,14 @@ funcenum SendProxyCallback
 	Action:public(entity, const String:PropName[], Float:vecValues[3], element), //Prop_Vector
 };
 
+funcenum SendProxyCallbackGamerules
+{
+	Action:public(const String:PropName[], &iValue, element), //Prop_Int
+	Action:public(const String:PropName[], &Float:flValue, element), //Prop_Float
+	Action:public(const String:PropName[], String:modifiedValue[4096], element), //Prop_String
+	Action:public(const String:PropName[], Float:vecValues[3], element), //Prop_Vector
+};
+
 funcenum PropChangedCallback
 {
 	public(entity, const String:PropName[], const String:oldValue[], const String:newValue[]),
@@ -27,6 +35,7 @@ funcenum PropChangedCallback
 
 //Returns true upon success, false upon failure
 native bool:SendProxy_Hook(entity, String:propname[], SendPropType:proptype, SendProxyCallback:callback);
+native bool:SendProxy_HookGamerules(String:propname[], SendPropType:proptype, SendProxyCallbackGamerules:callback);
 native bool:SendProxy_HookArrayProp(entity, const String:name[], element, SendPropType:type, SendProxyCallback:callback);
 native bool:SendProxy_UnhookArrayProp(entity, const String:name[], element, SendPropType:type, SendProxyCallback:callback);
 native bool:SendProxy_Unhook(entity, String:propname[], SendProxyCallback:callback);
