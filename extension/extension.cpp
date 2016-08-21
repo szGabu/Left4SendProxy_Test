@@ -48,25 +48,34 @@ SMEXT_LINK(&g_SendProxyManager);
 CThreadFastMutex g_WorkMutex;
 
 CUtlVector<SendPropHook> g_Hooks;
+CUtlVector<SendPropHookGamerules> g_HooksGamerules;
 CUtlVector<PropChangeHook> g_ChangeHooks;
+CUtlVector<PropChangeHookGamerules> g_ChangeHooksGamerules;
 
 IServerGameEnts *gameents = NULL;
 IServerGameClients *gameclients = NULL;
 IGameConfig *g_pGameConf = NULL;
+ISDKTools *g_pSDKTools = NULL;
 
 static cell_t Native_Hook(IPluginContext* pContext, const cell_t* params);
+static cell_t Native_HookGamerules(IPluginContext* pContext, const cell_t* params);
 static cell_t Native_Unhook(IPluginContext* pContext, const cell_t* params);
+static cell_t Native_UnhookGamerules(IPluginContext* pContext, const cell_t* params);
 static cell_t Native_IsHooked(IPluginContext* pContext, const cell_t* params);
 static cell_t Native_HookArrayProp(IPluginContext* pContext, const cell_t* params);
 static cell_t Native_UnhookArrayProp(IPluginContext* pContext, const cell_t* params);
 static cell_t Native_HookPropChange(IPluginContext* pContext, const cell_t* params);
 static cell_t Native_UnhookPropChange(IPluginContext* pContext, const cell_t* params);
 
+const char *g_szGameRulesProxy;
+
 const sp_nativeinfo_t g_MyNatives[] = {
 	{"SendProxy_Hook", Native_Hook},
+	{"SendProxy_HookGamerules", Native_HookGamerules},
 	{"SendProxy_HookArrayProp", Native_HookArrayProp},
 	{"SendProxy_UnhookArrayProp", Native_UnhookArrayProp},
 	{"SendProxy_Unhook", Native_Unhook},
+	{"SendProxy_UnhookGamerules", Native_UnhookGamerules},
 	{"SendProxy_IsHooked", Native_IsHooked},
 	{"SendProxy_HookPropChange", Native_HookPropChange},
 	{"SendProxy_UnhookPropChange", Native_UnhookPropChange},
@@ -118,7 +127,7 @@ void Hook_GameFrame(bool simulating)
 		{
 			switch(g_ChangeHooks[i].PropType)
 			{
-			case Prop_Int:
+				case Prop_Int:
 				{
 					edict_t* pEnt = engine->PEntityOfEntIndex(g_ChangeHooks[i].objectID);
 					CBaseEntity* pEntity = gameents->EdictToBaseEntity(pEnt);
@@ -138,7 +147,7 @@ void Hook_GameFrame(bool simulating)
 					}
 					break;
 				}
-			case Prop_Float:
+				case Prop_Float:
 				{
 					edict_t* pEnt = engine->PEntityOfEntIndex(g_ChangeHooks[i].objectID);
 					CBaseEntity* pEntity = gameents->EdictToBaseEntity(pEnt);
@@ -158,7 +167,7 @@ void Hook_GameFrame(bool simulating)
 					}
 					break;
 				}
-			case Prop_String:
+				case Prop_String:
 				{
 					edict_t* pEnt = engine->PEntityOfEntIndex(g_ChangeHooks[i].objectID);
 					CBaseEntity* pEntity = gameents->EdictToBaseEntity(pEnt);
@@ -175,7 +184,76 @@ void Hook_GameFrame(bool simulating)
 					}
 					break;
 				}
-			default:
+				default:
+				{
+					//earlier typechecks failed
+				}
+			}
+		}
+		void *pGamerules = NULL;
+		//Gamerules hooks
+		for (int i = 0; i < g_ChangeHooksGamerules.Count(); i++)
+		{
+			if (!pGamerules)
+			{
+				pGamerules = g_pSDKTools->GetGameRules();
+				if(!pGamerules)
+				{
+					g_pSM->LogError(myself, "CRITICAL ERROR: Could not get gamerules pointer!");
+					return;
+				}
+			}
+			switch(g_ChangeHooksGamerules[i].PropType)
+			{
+				case Prop_Int:
+				{
+					int iCurrent = *(int*)((unsigned char*)pGamerules + g_ChangeHooksGamerules[i].Offset);
+					if (iCurrent != g_ChangeHooksGamerules[i].iLastValue)
+					{
+						g_ChangeHooksGamerules[i].pCallback->PushString(g_ChangeHooksGamerules[i].pVar->GetName());
+						char oldValue[64];
+						snprintf(oldValue, 64, "%d", g_ChangeHooksGamerules[i].iLastValue);
+						char newValue[64];
+						snprintf(newValue, 64, "%d", iCurrent);
+						g_ChangeHooksGamerules[i].pCallback->PushString(oldValue);
+						g_ChangeHooksGamerules[i].pCallback->PushString(newValue);
+						g_ChangeHooksGamerules[i].pCallback->Execute(0);
+						g_ChangeHooksGamerules[i].iLastValue = iCurrent;
+					}
+					break;
+				}
+				case Prop_Float:
+				{
+					float flCurrent = *(float*)((unsigned char*)pGamerules + g_ChangeHooksGamerules[i].Offset);
+					if (flCurrent != g_ChangeHooksGamerules[i].flLastValue)
+					{
+						g_ChangeHooksGamerules[i].pCallback->PushString(g_ChangeHooksGamerules[i].pVar->GetName());
+						char oldValue[64];
+						snprintf(oldValue, 64, "%f", g_ChangeHooksGamerules[i].flLastValue);
+						char newValue[64];
+						snprintf(newValue, 64, "%f", flCurrent);
+						g_ChangeHooksGamerules[i].pCallback->PushString(oldValue);
+						g_ChangeHooksGamerules[i].pCallback->PushString(newValue);
+						g_ChangeHooksGamerules[i].pCallback->Execute(0);
+						g_ChangeHooksGamerules[i].flLastValue = flCurrent;
+					}
+					break;
+				}
+				case Prop_String:
+				{
+					const char* szCurrent = (const char*)((unsigned char*)pGamerules + g_ChangeHooksGamerules[i].Offset);
+					if (strcmp(szCurrent, g_ChangeHooksGamerules[i].szLastValue.c_str()) != 0)
+					{
+						g_ChangeHooksGamerules[i].pCallback->PushString(g_ChangeHooksGamerules[i].pVar->GetName());
+						g_ChangeHooksGamerules[i].pCallback->PushString(g_ChangeHooksGamerules[i].szLastValue.c_str());
+						g_ChangeHooksGamerules[i].pCallback->PushString(szCurrent);
+						g_ChangeHooksGamerules[i].pCallback->Execute(0);
+						g_ChangeHooksGamerules[i].szLastValue.clear();
+						g_ChangeHooksGamerules[i].szLastValue.append(szCurrent);
+					}
+					break;
+				}
+				default:
 				{
 					//earlier typechecks failed
 				}
@@ -187,6 +265,15 @@ void Hook_GameFrame(bool simulating)
 bool SendProxyManager::SDK_OnLoad(char *error, size_t maxlength, bool late)
 {
 	char conf_error[255];
+	if (!gameconfs->LoadGameConfigFile("sdktools.games", &g_pGameConf, conf_error, sizeof(conf_error)))
+	{
+		if (conf_error[0])
+			snprintf(error, maxlength, "Could not read config file sdktools.games.txt: %s", conf_error);
+		return false;
+	}
+	
+	g_szGameRulesProxy = g_pGameConf->GetKeyValue("GameRulesProxy");
+	
 	if (!gameconfs->LoadGameConfigFile("sendproxy", &g_pGameConf, conf_error, sizeof(conf_error)))
 	{
 		if (conf_error[0])
@@ -199,7 +286,9 @@ bool SendProxyManager::SDK_OnLoad(char *error, size_t maxlength, bool late)
 	if (offset > 0)
 	{
 		SH_MANUALHOOK_RECONFIGURE(UpdateOnRemove, offset, 0, 0);
-	} else {
+	}
+	else
+	{
 		snprintf(error, maxlength, "Could not get offset for UpdateOnRemove");
 		return false;
 	}
@@ -251,6 +340,14 @@ void SendProxyManager::OnPluginUnloaded(IPlugin *plugin)
 			i--;
 		}
 	}
+	for (int i = 0; i < g_HooksGamerules.Count(); i++)
+	{
+		if (g_HooksGamerules[i].pCallback->GetParentContext() == pCtx)
+		{
+			UnhookProxy(i);
+			i--;
+		}
+	}
 }
 
 
@@ -265,6 +362,18 @@ bool SendProxyManager::AddHookToList(SendPropHook hook)
 	CBaseEntity *pbe = gameents->EdictToBaseEntity(hook.pEnt);
 	SH_ADD_MANUALHOOK(UpdateOnRemove, pbe, SH_STATIC(Hook_UpdateOnRemove), false);
 	g_Hooks.AddToTail(hook);
+	return true;
+}
+
+bool SendProxyManager::AddHookToListGamerules(SendPropHookGamerules hook)
+{
+	//Need to make sure this prop isn't already hooked for this entity
+	for (int i = 0; i < g_HooksGamerules.Count(); i++)
+	{
+		if (g_HooksGamerules[i].pVar == hook.pVar)
+			return false;
+	}
+	g_HooksGamerules.AddToTail(hook);
 	return true;
 }
 
@@ -290,6 +399,28 @@ bool SendProxyManager::HookProxy(SendProp* pProp, int objectID, IPluginFunction 
 
 }
 
+bool SendProxyManager::HookProxyGamerules(SendProp* pProp, IPluginFunction *pCallback)
+{
+	void *pGamerules = g_pSDKTools->GetGameRules();
+	if(!pGamerules)
+	{
+		g_pSM->LogError(myself, "CRITICAL ERROR: Could not get gamerules pointer!");
+	}
+	
+	SendPropHookGamerules hook;
+	hook.pCallback = pCallback;
+	hook.PropType = Prop_Int;
+	hook.pVar = pProp;
+	hook.pRealProxy = pProp->GetProxyFn();
+	if (AddHookToListGamerules(hook))
+		pProp->SetProxyFn(GlobalProxy);
+	else
+		return false;
+
+	return true;
+
+}
+
 void SendProxyManager::UnhookProxy(int i)
 {
 	//if there are other hooks for this prop, don't change the proxy, just remove it from our list
@@ -305,6 +436,21 @@ void SendProxyManager::UnhookProxy(int i)
 	g_Hooks.Remove(i);
 }
 
+void SendProxyManager::UnhookProxyGamerules(int i)
+{
+	//if there are other hooks for this prop, don't change the proxy, just remove it from our list
+	for (int j = 0; j < g_HooksGamerules.Count(); j++)
+	{
+		if (g_HooksGamerules[j].pVar == g_HooksGamerules[i].pVar && i != j)
+		{
+			g_HooksGamerules.Remove(i);
+			return;
+		}
+	}
+	g_HooksGamerules[i].pVar->SetProxyFn(g_HooksGamerules[i].pRealProxy);
+	g_HooksGamerules.Remove(i);
+}
+
 bool CallInt(SendPropHook hook, int *ret)
 {
 	AUTO_LOCK_FM(g_WorkMutex);
@@ -314,6 +460,25 @@ bool CallInt(SendPropHook hook, int *ret)
 	cell_t value = *ret;
 	cell_t result = Pl_Continue;
 	callback->PushCell(hook.objectID);
+	callback->PushString(hook.pVar->GetName());
+	callback->PushCellByRef(&value);
+	callback->PushCell(hook.Element);
+	callback->Execute(&result);
+	if (result == Pl_Changed)
+	{
+		*ret = value;
+		return true;
+	}
+	return false;
+}
+
+bool CallIntGamerules(SendPropHookGamerules hook, int *ret)
+{
+	AUTO_LOCK_FM(g_WorkMutex);
+
+	IPluginFunction *callback = hook.pCallback;
+	cell_t value = *ret;
+	cell_t result = Pl_Continue;
 	callback->PushString(hook.pVar->GetName());
 	callback->PushCellByRef(&value);
 	callback->PushCell(hook.Element);
@@ -347,6 +512,25 @@ bool CallFloat(SendPropHook hook, float *ret)
 	return false;
 }
 
+bool CallFloatGamerules(SendPropHookGamerules hook, float *ret)
+{
+	AUTO_LOCK_FM(g_WorkMutex);
+
+	IPluginFunction *callback = hook.pCallback;
+	float value = *ret;
+	cell_t result = Pl_Continue;
+	callback->PushString(hook.pVar->GetName());
+	callback->PushFloatByRef(&value);
+	callback->PushCell(hook.Element);
+	callback->Execute(&result);
+	if (result == Pl_Changed)
+	{
+		*ret = value;
+		return true;
+	}
+	return false;
+}
+
 bool CallString(SendPropHook hook, char **ret)
 {
 	AUTO_LOCK_FM(g_WorkMutex);
@@ -359,6 +543,34 @@ bool CallString(SendPropHook hook, char **ret)
 	strncpy(value, src, sizeof(value));
 	cell_t result = Pl_Continue;
 	callback->PushCell(hook.objectID);
+	callback->PushString(hook.pVar->GetName());
+	callback->PushStringEx(value, 4096, SM_PARAM_STRING_UTF8 | SM_PARAM_STRING_COPY, SM_PARAM_COPYBACK);
+	callback->PushCell(hook.Element);
+	callback->Execute(&result);
+	if (result == Pl_Changed)
+	{
+		*ret = value;
+		return true;
+	}
+	return false;
+}
+
+bool CallStringGamerules(SendPropHookGamerules hook, char **ret)
+{
+	AUTO_LOCK_FM(g_WorkMutex);
+
+	void *pGamerules = g_pSDKTools->GetGameRules();
+	if(!pGamerules)
+	{
+		g_pSM->LogError(myself, "CRITICAL ERROR: Could not get gamerules pointer!");
+	}
+	
+	IPluginFunction *callback = hook.pCallback;
+	char value[4096];
+	const char *src;
+	src = (char *)((unsigned char*)pGamerules + hook.Offset);
+	strncpy(value, src, sizeof(value));
+	cell_t result = Pl_Continue;
 	callback->PushString(hook.pVar->GetName());
 	callback->PushStringEx(value, 4096, SM_PARAM_STRING_UTF8 | SM_PARAM_STRING_COPY, SM_PARAM_COPYBACK);
 	callback->PushCell(hook.Element);
@@ -398,6 +610,32 @@ bool CallVector(SendPropHook hook, Vector &vec)
 	return false;
 }
 
+bool CallVectorGamerules(SendPropHookGamerules hook, Vector &vec)
+{
+	AUTO_LOCK_FM(g_WorkMutex);
+
+	IPluginFunction *callback = hook.pCallback;
+
+	cell_t vector[3];
+	vector[0] = sp_ftoc(vec.x);
+	vector[1] = sp_ftoc(vec.y);
+	vector[2] = sp_ftoc(vec.z);
+
+	cell_t result = Pl_Continue;
+	callback->PushString(hook.pVar->GetName());
+	callback->PushArray(vector, 3, SM_PARAM_COPYBACK);
+	callback->PushCell(hook.Element);
+	callback->Execute(&result);
+	if (result == Pl_Changed)
+	{
+		vec.x = sp_ctof(vector[0]);
+		vec.y = sp_ctof(vector[1]);
+		vec.z = sp_ctof(vector[2]);
+		return true;
+	}
+	return false;
+}
+
 void GlobalProxy(const SendProp *pProp, const void *pStructBase, const void* pData, DVariant *pOut, int iElement, int objectID)
 {
 	edict_t* pEnt = engine->PEntityOfEntIndex(objectID);
@@ -407,7 +645,7 @@ void GlobalProxy(const SendProp *pProp, const void *pStructBase, const void* pDa
 		{
 			switch (g_Hooks[i].PropType)
 			{
-			case Prop_Int:
+				case Prop_Int:
 				{
 					int result = *(int *)pData;
 
@@ -422,7 +660,7 @@ void GlobalProxy(const SendProp *pProp, const void *pStructBase, const void* pDa
 						return;
 					}
 				}
-			case Prop_Float:
+				case Prop_Float:
 				{
 					float result = *(float *)pData;
 
@@ -435,7 +673,7 @@ void GlobalProxy(const SendProp *pProp, const void *pStructBase, const void* pDa
 						return;
 					}
 				}
-			case Prop_String:
+				case Prop_String:
 				{
 					char* result = (char *)pData;
 
@@ -448,7 +686,7 @@ void GlobalProxy(const SendProp *pProp, const void *pStructBase, const void* pDa
 						return;
 					}
 				}
-			case Prop_Vector:
+				case Prop_Vector:
 				{
 					Vector result = *(Vector *)pData;
 
@@ -461,7 +699,7 @@ void GlobalProxy(const SendProp *pProp, const void *pStructBase, const void* pDa
 						return;
 					}
 				}
-			default: printf("wat do?\n");
+				default: printf("wat do?\n");
 			}
 		}
 	}
@@ -478,6 +716,92 @@ void GlobalProxy(const SendProp *pProp, const void *pStructBase, const void* pDa
 	
 }
 
+void GlobalProxyGamerules(const SendProp *pProp, const void *pStructBase, const void* pData, DVariant *pOut, int iElement, int objectID)
+{
+	for (int i = 0; i < g_HooksGamerules.Count(); i++)
+	{
+		if (g_HooksGamerules[i].pVar == pProp)
+		{
+			switch (g_HooksGamerules[i].PropType)
+			{
+				case Prop_Int:
+				{
+					int result = *(int *)pData;
+
+					if (CallIntGamerules(g_HooksGamerules[i], &result))
+					{
+						long data = result;
+
+						g_HooksGamerules[i].pRealProxy(pProp, pStructBase, &data, pOut, iElement, objectID);
+						return;
+					}
+					else
+					{
+						g_HooksGamerules[i].pRealProxy(pProp, pStructBase, pData, pOut, iElement, objectID);
+						return;
+					}
+				}
+				case Prop_Float:
+				{
+					float result = *(float *)pData;
+
+					if (CallFloatGamerules(g_HooksGamerules[i], &result))
+					{
+						g_HooksGamerules[i].pRealProxy(pProp, pStructBase, &result, pOut, iElement, objectID);
+						return;
+					} 
+					else
+					{
+						g_HooksGamerules[i].pRealProxy(pProp, pStructBase, pData, pOut, iElement, objectID);
+						return;
+					}
+				}
+				case Prop_String:
+				{
+					char* result = (char *)pData;
+
+					if (CallStringGamerules(g_HooksGamerules[i], &result))
+					{
+						g_HooksGamerules[i].pRealProxy(pProp, pStructBase, &result, pOut, iElement, objectID);
+						return;
+					}
+					else
+					{
+						g_HooksGamerules[i].pRealProxy(pProp, pStructBase, pData, pOut, iElement, objectID);
+						return;
+					}
+				}
+				case Prop_Vector:
+				{
+					Vector result = *(Vector *)pData;
+
+					if (CallVectorGamerules(g_HooksGamerules[i], result))
+					{
+						g_HooksGamerules[i].pRealProxy(pProp, pStructBase, &result, pOut, iElement, objectID);
+						return;
+					}
+					else
+					{
+						g_HooksGamerules[i].pRealProxy(pProp, pStructBase, pData, pOut, iElement, objectID);
+						return;
+					}
+				}
+				default: printf("wat do?\n");
+			}
+		}
+	}
+	//perhaps we aren't hooked, but we can still find the real proxy for this prop
+	for (int i = 0; i < g_HooksGamerules.Count(); i++)
+	{
+		if (g_HooksGamerules[i].pVar == pProp)
+		{
+			g_Hooks[i].pRealProxy(pProp, pStructBase, pData, pOut, iElement, objectID);
+			return;
+		}
+	}
+	g_pSM->LogError(myself, "CRITICAL: Proxy for unmanaged gamerules called for prop %s", pProp->GetName());
+	
+}
 //PropChanged(entity, const String:propname[], const String:oldValue[], const String:newValue[])
 //SendProxy_HookPropChange(entity, const String:name[], PropChanged:callback)
 
@@ -635,6 +959,81 @@ after:
 	return 1;
 }
 
+static cell_t Native_HookGamerules(IPluginContext* pContext, const cell_t* params)
+{
+	char* name;
+	pContext->LocalToString(params[1], &name);
+	int propType = params[2];
+	IPluginFunction *callback = pContext->GetFunctionById(params[3]);
+	SendProp *pProp = NULL;
+	sm_sendprop_info_t info;
+
+	gamehelpers->FindSendPropInfo(g_szGameRulesProxy, name, &info);
+	pProp = info.prop;
+	if (!pProp)
+	{
+		pContext->ThrowNativeError("Could not find prop %s", name);
+		return 0;
+	}
+	switch (propType)
+	{
+		case Prop_Int: 
+		{
+			if (pProp->GetType() != DPT_Int)
+				return pContext->ThrowNativeError("Prop %s is not an int!", pProp->GetName());
+			break;
+		}
+		case Prop_Float:
+		{
+			if (pProp->GetType() != DPT_Float)
+				return pContext->ThrowNativeError("Prop %s is not a float!", pProp->GetName());
+			break;
+		}
+		case Prop_String:
+		{
+			if (pProp->GetType() != DPT_String)
+				return pContext->ThrowNativeError("Prop %s is not a string!", pProp->GetName());
+			break;
+		}
+		case Prop_Vector:
+		{
+			if (pProp->GetType() != DPT_Vector)
+				return pContext->ThrowNativeError("Prop %s is not a vector!", pProp->GetName());
+			break;
+		}
+		default: return pContext->ThrowNativeError("Unsupported prop type %d", propType);
+	}
+	SendPropHookGamerules hook;
+	hook.pCallback = callback;
+	for (int i = 0; i < g_HooksGamerules.Count(); i++)
+	{
+		if (g_HooksGamerules[i].pVar == pProp)
+		{
+			hook.pRealProxy = g_HooksGamerules[i].pRealProxy;
+			goto after;
+		}
+	}
+	hook.pRealProxy = pProp->GetProxyFn();
+after:
+	hook.PropType = propType;
+	hook.pVar = pProp;
+	hook.Offset = info.actual_offset;
+	
+	//if this prop has been hooked already, don't set the proxy again
+	for (int i = 0; i < g_HooksGamerules.Count(); i++)
+	{
+		if (g_HooksGamerules[i].pVar == pProp)
+		{
+			hook.pRealProxy = g_HooksGamerules[i].pRealProxy;
+			g_SendProxyManager.AddHookToListGamerules(hook);
+			return 1;
+		}
+	}
+	g_SendProxyManager.AddHookToListGamerules(hook);
+	pProp->SetProxyFn(GlobalProxyGamerules);
+	return 1;
+}
+
 
 //native SendProxy_HookArrayProp(entity, const String:name[], element, SendPropType:type, SendProxyCallback:callback);
 
@@ -737,6 +1136,22 @@ static cell_t Native_Unhook(IPluginContext* pContext, const cell_t* params)
 		if (params[1] == g_Hooks[i].objectID && strcmp(g_Hooks[i].pVar->GetName(), propName) == 0 && pFunction == g_Hooks[i].pCallback)
 		{
 			g_SendProxyManager.UnhookProxy(i);
+			return 1;
+		}
+	}
+	return 0;
+}
+
+static cell_t Native_UnhookGamerules(IPluginContext* pContext, const cell_t* params)//To-do break all the gamerules hook on map end.
+{
+	char *propName;
+	pContext->LocalToString(params[1], &propName);
+	IPluginFunction *pFunction = pContext->GetFunctionById(params[2]);
+	for (int i = 0; i < g_HooksGamerules.Count(); i++)
+	{
+		if (strcmp(g_HooksGamerules[i].pVar->GetName(), propName) == 0 && pFunction == g_HooksGamerules[i].pCallback)
+		{
+			g_SendProxyManager.UnhookProxyGamerules(i);
 			return 1;
 		}
 	}

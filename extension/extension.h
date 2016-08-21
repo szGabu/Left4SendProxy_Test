@@ -36,7 +36,7 @@
  * @file extension.h
  * @brief Sample extension code header.
  */
-
+#include <ISDKTools.h>
 #include "smsdk_ext.h"
 #include "dt_send.h"
 #include "server_class.h"
@@ -65,7 +65,31 @@ public:
 	int					Element;
 };
 
+class SendPropHookGamerules
+{
+public:
+	IPluginFunction*	pCallback;
+	SendProp*			pVar;
+	SendVarProxyFn		pRealProxy;
+	int					PropType;
+	int					Offset;
+	int					Element;
+};
+
 class PropChangeHook
+{
+public:
+	IPluginFunction*	pCallback;
+	int					iLastValue;
+	float				flLastValue;
+	std::string			szLastValue;
+	SendProp*			pVar;
+	int					PropType;
+	unsigned int		Offset;
+	int					objectID;
+};
+
+class PropChangeHookGamerules
 {
 public:
 	IPluginFunction*	pCallback;
@@ -99,9 +123,12 @@ public:
 	//Returns false if hook exists for that object and prop
 	//Returns false if the prop does not exist or the edict does not exist/is free
 	bool AddHookToList(SendPropHook hook);
+	bool AddHookToListGamerules(SendPropHookGamerules hook);
 	bool HookProxy(SendProp* pProp, int objectID, IPluginFunction *pCallback);
+	bool HookProxyGamerules(SendProp* pProp, IPluginFunction *pCallback);
 
 	void UnhookProxy(int i);
+	void UnhookProxyGamerules(int i);
 
 public:
 #if defined SMEXT_CONF_METAMOD
