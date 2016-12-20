@@ -7,3 +7,4 @@ Fork of Afronanny's SendProxy Manager [extension](https://forums.alliedmods.net/
 * Removed the broken auto-updater.
 * Added AMBuild scripts.
 * Includes TF2 build.
+* Added GameRules hook.
