@@ -58,27 +58,33 @@ IGameConfig *g_pGameConf = NULL;
 ISDKTools *g_pSDKTools = NULL;
 
 static cell_t Native_Hook(IPluginContext* pContext, const cell_t* params);
-static cell_t Native_HookGamerules(IPluginContext* pContext, const cell_t* params);
+static cell_t Native_HookGameRules(IPluginContext* pContext, const cell_t* params);
 static cell_t Native_Unhook(IPluginContext* pContext, const cell_t* params);
-static cell_t Native_UnhookGamerules(IPluginContext* pContext, const cell_t* params);
+static cell_t Native_UnhookGameRules(IPluginContext* pContext, const cell_t* params);
 static cell_t Native_IsHooked(IPluginContext* pContext, const cell_t* params);
+static cell_t Native_IsHookedGameRules(IPluginContext* pContext, const cell_t* params);
 static cell_t Native_HookArrayProp(IPluginContext* pContext, const cell_t* params);
 static cell_t Native_UnhookArrayProp(IPluginContext* pContext, const cell_t* params);
 static cell_t Native_HookPropChange(IPluginContext* pContext, const cell_t* params);
+static cell_t Native_HookPropChangeGameRules(IPluginContext* pContext, const cell_t* params);
 static cell_t Native_UnhookPropChange(IPluginContext* pContext, const cell_t* params);
+static cell_t Native_UnhookPropChangeGameRules(IPluginContext* pContext, const cell_t* params);
 
 const char *g_szGameRulesProxy;
 
 const sp_nativeinfo_t g_MyNatives[] = {
 	{"SendProxy_Hook", Native_Hook},
-	{"SendProxy_HookGamerules", Native_HookGamerules},
+	{"SendProxy_HookGameRules", Native_HookGameRules},
 	{"SendProxy_HookArrayProp", Native_HookArrayProp},
 	{"SendProxy_UnhookArrayProp", Native_UnhookArrayProp},
 	{"SendProxy_Unhook", Native_Unhook},
-	{"SendProxy_UnhookGamerules", Native_UnhookGamerules},
+	{"SendProxy_UnhookGameRules", Native_UnhookGameRules},
 	{"SendProxy_IsHooked", Native_IsHooked},
+	{"SendProxy_IsHookedGameRules", Native_IsHookedGameRules},
 	{"SendProxy_HookPropChange", Native_HookPropChange},
+	{"SendProxy_HookPropChangeGameRules", Native_HookPropChangeGameRules},
 	{"SendProxy_UnhookPropChange", Native_UnhookPropChange},
+	{"SendProxy_UnhookPropChangeGameRules", Native_UnhookPropChangeGameRules},
 	{NULL,	NULL},
 };
 
@@ -190,19 +196,19 @@ void Hook_GameFrame(bool simulating)
 				}
 			}
 		}
-		void *pGamerules = NULL;
+		static void *pGamerules = NULL;
+		if (!pGamerules)
+		{
+			pGamerules = g_pSDKTools->GetGameRules();
+			if(!pGamerules)
+			{
+				g_pSM->LogError(myself, "CRITICAL ERROR: Could not get gamerules pointer!");
+				return;
+			}
+		}
 		//Gamerules hooks
 		for (int i = 0; i < g_ChangeHooksGamerules.Count(); i++)
 		{
-			if (!pGamerules)
-			{
-				pGamerules = g_pSDKTools->GetGameRules();
-				if(!pGamerules)
-				{
-					g_pSM->LogError(myself, "CRITICAL ERROR: Could not get gamerules pointer!");
-					return;
-				}
-			}
 			switch(g_ChangeHooksGamerules[i].PropType)
 			{
 				case Prop_Int:
@@ -317,6 +323,15 @@ void SendProxyManager::SDK_OnUnload()
 	SH_REMOVE_HOOK(IServerGameDLL, GameFrame, gamedll, SH_STATIC(Hook_GameFrame), false);
 
 	plsys->RemovePluginsListener(&g_SendProxyManager);
+}
+
+void SendProxyManager::OnCoreMapEnd()
+{
+	for (int i = 0; i < g_HooksGamerules.Count(); i++)
+	{
+		UnhookProxyGamerules(i);
+		i--;
+	}
 }
 
 bool SendProxyManager::SDK_OnMetamodLoad(ISmmAPI *ismm, char *error, size_t maxlen, bool late)
@@ -827,6 +842,22 @@ static cell_t Native_UnhookPropChange(IPluginContext* pContext, const cell_t* pa
 	}
 	return 1;
 }
+
+static cell_t Native_UnhookPropChangeGameRules(IPluginContext* pContext, const cell_t* params)
+{
+	char* name;
+	pContext->LocalToString(params[1], &name);
+	IPluginFunction *callback = pContext->GetFunctionById(params[2]);
+	sm_sendprop_info_t info;
+	gamehelpers->FindSendPropInfo(g_szGameRulesProxy, name, &info);
+	
+	for (int i = 0; i < g_ChangeHooksGamerules.Count(); i++)
+	{
+		if (g_ChangeHooksGamerules[i].pCallback == callback && g_ChangeHooksGamerules[i].pVar == info.prop)
+			g_ChangeHooksGamerules.Remove(i--);
+	}
+	return 1;
+}
 	
 static cell_t Native_HookPropChange(IPluginContext* pContext, const cell_t* params)
 {
@@ -864,6 +895,47 @@ static cell_t Native_HookPropChange(IPluginContext* pContext, const cell_t* para
 	hook.pCallback = callback;
 
 	g_ChangeHooks.AddToTail(hook);
+	return 1;
+}
+
+static cell_t Native_HookPropChangeGameRules(IPluginContext* pContext, const cell_t* params)
+{
+	char* name;
+	pContext->LocalToString(params[1], &name);
+	IPluginFunction *callback = pContext->GetFunctionById(params[2]);
+	SendProp *pProp = NULL;
+	PropChangeHookGamerules hook;
+	sm_sendprop_info_t info;
+	gamehelpers->FindSendPropInfo(g_szGameRulesProxy, name, &info);
+
+	pProp = info.prop;
+	int offset = info.actual_offset;
+	SendPropType type = pProp->GetType();
+
+	static void *pGamerules = NULL;
+	if (!pGamerules)
+	{
+		pGamerules = g_pSDKTools->GetGameRules();
+		if (!pGamerules)
+		{
+			g_pSM->LogError(myself, "CRITICAL ERROR: Could not get gamerules pointer!");
+			return 0;
+		}
+	}
+
+	switch (type)
+	{
+	case DPT_Int: hook.PropType = Prop_Int; hook.iLastValue = *(int*)((unsigned char*)pGamerules + offset); break;
+	case DPT_Float: hook.PropType = Prop_Float; hook.flLastValue = *(float*)((unsigned char*)pGamerules + offset); break;
+	case DPT_String: hook.PropType = Prop_String; hook.szLastValue = *(const char*)((unsigned char*)pGamerules + offset); break;
+	default: return pContext->ThrowNativeError("Prop type %d is not yet supported", type);
+	}
+
+	hook.Offset = offset;
+	hook.pVar = pProp;
+	hook.pCallback = callback;
+
+	g_ChangeHooksGamerules.AddToTail(hook);
 	return 1;
 }
 
@@ -959,7 +1031,7 @@ after:
 	return 1;
 }
 
-static cell_t Native_HookGamerules(IPluginContext* pContext, const cell_t* params)
+static cell_t Native_HookGameRules(IPluginContext* pContext, const cell_t* params)
 {
 	char* name;
 	pContext->LocalToString(params[1], &name);
@@ -1142,7 +1214,7 @@ static cell_t Native_Unhook(IPluginContext* pContext, const cell_t* params)
 	return 0;
 }
 
-static cell_t Native_UnhookGamerules(IPluginContext* pContext, const cell_t* params)//To-do break all the gamerules hook on map end.
+static cell_t Native_UnhookGameRules(IPluginContext* pContext, const cell_t* params)//To-do break all the gamerules hook on map end.
 {
 	char *propName;
 	pContext->LocalToString(params[1], &propName);
@@ -1167,6 +1239,19 @@ static cell_t Native_IsHooked(IPluginContext* pContext, const cell_t* params)
 	for (int i = 0; i < g_Hooks.Count(); i++)
 	{
 		if (g_Hooks[i].objectID == objectID && strcmp(propName, g_Hooks[i].pVar->GetName()) == 0)
+			return 1;
+	}
+	return 0;
+}
+
+static cell_t Native_IsHookedGameRules(IPluginContext* pContext, const cell_t* params)
+{
+	char *propName;
+	pContext->LocalToString(params[1], &propName);
+
+	for (int i = 0; i < g_HooksGamerules.Count(); i++)
+	{
+		if (strcmp(propName, g_HooksGamerules[i].pVar->GetName()) == 0)
 			return 1;
 	}
 	return 0;

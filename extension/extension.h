@@ -99,7 +99,6 @@ public:
 	SendProp*			pVar;
 	int					PropType;
 	unsigned int		Offset;
-	int					objectID;
 };
 
 void GlobalProxy(const SendProp *pProp, const void *pStructBase, const void* pData, DVariant *pOut, int iElement, int objectID);
@@ -114,7 +113,7 @@ public:
 	virtual void SDK_OnUnload();
 	virtual void SDK_OnAllLoaded();
 	
-
+	virtual void OnCoreMapEnd();
 	//virtual void SDK_OnPauseChange(bool paused);
 
 	//virtual bool QueryRunning(char *error, size_t maxlength);

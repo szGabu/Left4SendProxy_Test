@@ -8,6 +8,8 @@
 *.la
 *.a
 
+extension/build/
+
 Debug*/
 Release*/
 *.suo

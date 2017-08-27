@@ -12,37 +12,46 @@ enum SendPropType {
 	Prop_Max
 };
 
-funcenum SendProxyCallback
+typeset SendProxyCallback
 {
-	Action:public(entity, const String:PropName[], &iValue, element), //Prop_Int
-	Action:public(entity, const String:PropName[], &Float:flValue, element), //Prop_Float
-	Action:public(entity, const String:PropName[], String:modifiedValue[4096], element), //Prop_String
-	Action:public(entity, const String:PropName[], Float:vecValues[3], element), //Prop_Vector
+	function Action (int entity, const char[] PropName, int &iValue, int element); //Prop_Int
+	function Action (int entity, const char[] PropName, float &flValue, int element); //Prop_Float
+	function Action (int entity, const char[] PropName, char modifiedValue[4096], int element); //Prop_String
+	function Action (int entity, const char[] PropName, float vecValues[3], int element); //Prop_Vector
 };
 
-funcenum SendProxyCallbackGamerules
+typeset SendProxyCallbackGamerules
 {
-	Action:public(const String:PropName[], &iValue, element), //Prop_Int
-	Action:public(const String:PropName[], &Float:flValue, element), //Prop_Float
-	Action:public(const String:PropName[], String:modifiedValue[4096], element), //Prop_String
-	Action:public(const String:PropName[], Float:vecValues[3], element), //Prop_Vector
+	function Action (const char[] PropName, int &iValue, int element); //Prop_Int
+	function Action (const char[] PropName, float &flValue, int element); //Prop_Float
+	function Action (const char[] PropName, char modifiedValue[4096], int element); //Prop_String
+	function Action (const char[] PropName, float vecValues[3], int element); //Prop_Vector
 };
 
-funcenum PropChangedCallback
+typeset PropChangedCallback
 {
-	public(entity, const String:PropName[], const String:oldValue[], const String:newValue[]),
+	function void(int entity, const char[] PropName, const char[] oldValue, const char[] newValue));
+};
+
+typeset GameRulesPropChangedCallback
+{
+	function void(const char[] PropName, const char[] oldValue, const char[] newValue);
 };
 
 //Returns true upon success, false upon failure
-native bool:SendProxy_Hook(entity, String:propname[], SendPropType:proptype, SendProxyCallback:callback);
-native bool:SendProxy_HookGamerules(String:propname[], SendPropType:proptype, SendProxyCallbackGamerules:callback);
-native bool:SendProxy_HookArrayProp(entity, const String:name[], element, SendPropType:type, SendProxyCallback:callback);
-native bool:SendProxy_UnhookArrayProp(entity, const String:name[], element, SendPropType:type, SendProxyCallback:callback);
-native bool:SendProxy_Unhook(entity, String:propname[], SendProxyCallback:callback);
-native bool:SendProxy_IsHooked(entity, String:propname[]);
+native bool SendProxy_Hook(int entity, char[] propname, SendPropType proptype, SendProxyCallback callback);
+native bool SendProxy_HookGameRules(char[] propname, SendPropType proptype, SendProxyCallbackGamerules callback);
+native bool SendProxy_HookArrayProp(int entity, const char[] name, int element, SendPropType: ype, SendProxyCallback callback);
+native bool SendProxy_UnhookArrayProp(int entity, const char[] name, int element, SendPropType type, SendProxyCallback callback);
+native bool SendProxy_Unhook(int entity, char[] propname, SendProxyCallback callback);
+native bool SendProxy_UnhookGameRules(char[] propname, SendProxyCallbackGamerules callback);
+native bool SendProxy_IsHooked(int entity, char[] propname);
+native bool SendProxy_IsHookedGameRules(char[] propname);
 
-native bool:SendProxy_HookPropChange(entity, const String:name[], PropChangedCallback:callback);
-native SendProxy_UnhookPropChange(entity, const String:name[], PropChangedCallback:callback);
+native bool SendProxy_HookPropChange(entity, const char[] name, PropChangedCallback callback);
+native bool SendProxy_HookPropChangeGameRules(const char[] name, GameRulesPropChangedCallback callback);
+native void SendProxy_UnhookPropChange(entity, const char[] name, PropChangedCallback callback);
+native void SendProxy_UnhookPropChangeGameRules(const char[] name, GameRulesPropChangedCallback callback);
 
 #if !defined REQUIRE_EXTENSIONS
 public __ext_sendproxymanager_SetNTVOptional()
@@ -56,7 +65,7 @@ public __ext_sendproxymanager_SetNTVOptional()
 }
 #endif  
 
-public Extension:__ext_sendproxymanager = 
+public Extension __ext_sendproxymanager = 
 {
 	name = "SendProxy Manager",
 	file = "sendproxy.ext",
