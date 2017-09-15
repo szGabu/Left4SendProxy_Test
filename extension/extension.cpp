@@ -197,7 +197,7 @@ void Hook_GameFrame(bool simulating)
 			}
 		}
 		static void *pGamerules = NULL;
-		if (!pGamerules)
+		if (!pGamerules && g_pSDKTools)
 		{
 			pGamerules = g_pSDKTools->GetGameRules();
 			if(!pGamerules)
@@ -308,6 +308,7 @@ bool SendProxyManager::SDK_OnLoad(char *error, size_t maxlength, bool late)
 void SendProxyManager::SDK_OnAllLoaded()
 {
 	sharesys->AddNatives(myself, g_MyNatives);
+	SM_GET_LATE_IFACE(SDKTOOLS, g_pSDKTools);
 }
 
 void SendProxyManager::SDK_OnUnload()
