@@ -30,7 +30,7 @@ typeset SendProxyCallbackGamerules
 
 typeset PropChangedCallback
 {
-	function void(int entity, const char[] PropName, const char[] oldValue, const char[] newValue));
+	function void(int entity, const char[] PropName, const char[] oldValue, const char[] newValue);
 };
 
 typeset GameRulesPropChangedCallback
