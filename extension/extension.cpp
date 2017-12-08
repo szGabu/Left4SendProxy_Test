@@ -57,6 +57,8 @@ IServerGameClients *gameclients = NULL;
 IGameConfig *g_pGameConf = NULL;
 ISDKTools *g_pSDKTools = NULL;
 
+ConVar *sv_parallel_packentities = NULL;
+
 static cell_t Native_Hook(IPluginContext* pContext, const cell_t* params);
 static cell_t Native_HookGameRules(IPluginContext* pContext, const cell_t* params);
 static cell_t Native_Unhook(IPluginContext* pContext, const cell_t* params);
@@ -342,6 +344,10 @@ bool SendProxyManager::SDK_OnMetamodLoad(ISmmAPI *ismm, char *error, size_t maxl
 	GET_V_IFACE_ANY(GetEngineFactory, g_pCVar, ICvar, CVAR_INTERFACE_VERSION);
 	SH_ADD_HOOK(IServerGameDLL, GameFrame, gamedll, SH_STATIC(Hook_GameFrame), false);
 	SH_ADD_HOOK(IServerGameClients, ClientDisconnect, gameclients, SH_STATIC(Hook_ClientDisconnect), false);
+	
+	GET_CONVAR(sv_parallel_packentities);
+	sv_parallel_packentities->SetValue(0);//If we don't do that the sendproxy extension will crash the server (Post ref: https://forums.alliedmods.net/showpost.php?p=2540106&postcount=324 )
+	
 	return true;
 }
 
@@ -360,7 +366,7 @@ void SendProxyManager::OnPluginUnloaded(IPlugin *plugin)
 	{
 		if (g_HooksGamerules[i].pCallback->GetParentContext() == pCtx)
 		{
-			UnhookProxy(i);
+			UnhookProxyGamerules(i);
 			i--;
 		}
 	}

@@ -43,6 +43,15 @@
 #include "convar.h"
 #include <string>
 
+#define GET_CONVAR(name) \
+	name = g_pCVar->FindVar(#name); \
+	if (name == nullptr) { \
+		if (error != nullptr && maxlen != 0) { \
+			ismm->Format(error, maxlen, "Could not find ConVar: " #name); \
+		} \
+		return false; \
+	}
+	
 enum {
 	Prop_Int = 0,
 	Prop_Float = 1, 
