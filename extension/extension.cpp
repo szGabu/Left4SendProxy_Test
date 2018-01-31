@@ -52,12 +52,12 @@ CUtlVector<SendPropHookGamerules> g_HooksGamerules;
 CUtlVector<PropChangeHook> g_ChangeHooks;
 CUtlVector<PropChangeHookGamerules> g_ChangeHooksGamerules;
 
-IServerGameEnts *gameents = NULL;
-IServerGameClients *gameclients = NULL;
-IGameConfig *g_pGameConf = NULL;
-ISDKTools *g_pSDKTools = NULL;
+IServerGameEnts *gameents = nullptr;
+IServerGameClients *gameclients = nullptr;
+IGameConfig *g_pGameConf = nullptr;
+ISDKTools *g_pSDKTools = nullptr;
 
-ConVar *sv_parallel_packentities = NULL;
+ConVar *sv_parallel_packentities = nullptr;
 
 static cell_t Native_Hook(IPluginContext* pContext, const cell_t* params);
 static cell_t Native_HookGameRules(IPluginContext* pContext, const cell_t* params);
@@ -198,7 +198,7 @@ void Hook_GameFrame(bool simulating)
 				}
 			}
 		}
-		static void *pGamerules = NULL;
+		static void *pGamerules = nullptr;
 		if (!pGamerules && g_pSDKTools)
 		{
 			pGamerules = g_pSDKTools->GetGameRules();
@@ -877,7 +877,7 @@ static cell_t Native_HookPropChange(IPluginContext* pContext, const cell_t* para
 	edict_t* pEnt = gamehelpers->EdictOfIndex(entity);
 	pContext->LocalToString(params[2], &name);
 	IPluginFunction *callback = pContext->GetFunctionById(params[3]);
-	SendProp *pProp = NULL;
+	SendProp *pProp = nullptr;
 	PropChangeHook hook;
 	sm_sendprop_info_t info;
 	ServerClass *sc = pEnt->GetNetworkable()->GetServerClass();
@@ -910,7 +910,7 @@ static cell_t Native_HookPropChangeGameRules(IPluginContext* pContext, const cel
 	char* name;
 	pContext->LocalToString(params[1], &name);
 	IPluginFunction *callback = pContext->GetFunctionById(params[2]);
-	SendProp *pProp = NULL;
+	SendProp *pProp = nullptr;
 	PropChangeHookGamerules hook;
 	sm_sendprop_info_t info;
 	gamehelpers->FindSendPropInfo(g_szGameRulesProxy, name, &info);
@@ -919,7 +919,7 @@ static cell_t Native_HookPropChangeGameRules(IPluginContext* pContext, const cel
 	int offset = info.actual_offset;
 	SendPropType type = pProp->GetType();
 
-	static void *pGamerules = NULL;
+	static void *pGamerules = nullptr;
 	if (!pGamerules)
 	{
 		pGamerules = g_pSDKTools->GetGameRules();
@@ -958,7 +958,7 @@ static cell_t Native_Hook(IPluginContext* pContext, const cell_t* params)
 	edict_t* pEnt = gamehelpers->EdictOfIndex(entity);
 	int propType = params[3];
 	IPluginFunction *callback = pContext->GetFunctionById(params[4]);
-	SendProp *pProp = NULL;
+	SendProp *pProp = nullptr;
 	ServerClass *sc = pEnt->GetNetworkable()->GetServerClass();
 	sm_sendprop_info_t info;
 	
@@ -1044,7 +1044,7 @@ static cell_t Native_HookGameRules(IPluginContext* pContext, const cell_t* param
 	pContext->LocalToString(params[1], &name);
 	int propType = params[2];
 	IPluginFunction *callback = pContext->GetFunctionById(params[3]);
-	SendProp *pProp = NULL;
+	SendProp *pProp = nullptr;
 	sm_sendprop_info_t info;
 
 	gamehelpers->FindSendPropInfo(g_szGameRulesProxy, name, &info);
