@@ -54,7 +54,6 @@ CUtlVector<PropChangeHookGamerules> g_ChangeHooksGamerules;
 
 IServerGameEnts *gameents = nullptr;
 IServerGameClients *gameclients = nullptr;
-IGameConfig *g_pGameConf = nullptr;
 ISDKTools *g_pSDKTools = nullptr;
 
 ConVar *sv_parallel_packentities = nullptr;
@@ -272,17 +271,21 @@ void Hook_GameFrame(bool simulating)
 }
 bool SendProxyManager::SDK_OnLoad(char *error, size_t maxlength, bool late)
 {
+	IGameConfig* pGameConf;
+
 	char conf_error[255];
-	if (!gameconfs->LoadGameConfigFile("sdktools.games", &g_pGameConf, conf_error, sizeof(conf_error)))
+	if (!gameconfs->LoadGameConfigFile("sdktools.games", &pGameConf, conf_error, sizeof(conf_error)))
 	{
 		if (conf_error[0])
 			snprintf(error, maxlength, "Could not read config file sdktools.games.txt: %s", conf_error);
 		return false;
 	}
 	
-	g_szGameRulesProxy = g_pGameConf->GetKeyValue("GameRulesProxy");
+	g_szGameRulesProxy = pGameConf->GetKeyValue("GameRulesProxy");
 	
-	if (!gameconfs->LoadGameConfigFile("sendproxy", &g_pGameConf, conf_error, sizeof(conf_error)))
+	gameconfs->CloseGameConfigFile(pGameConf);
+
+	if (!gameconfs->LoadGameConfigFile("sendproxy", &pGameConf, conf_error, sizeof(conf_error)))
 	{
 		if (conf_error[0])
 			snprintf(error, maxlength, "Could not read config file sendproxy.txt: %s", conf_error);
@@ -290,7 +293,7 @@ bool SendProxyManager::SDK_OnLoad(char *error, size_t maxlength, bool late)
 	}
 
 	int offset = 0;
-	g_pGameConf->GetOffset("UpdateOnRemove", &offset);
+	pGameConf->GetOffset("UpdateOnRemove", &offset);
 	if (offset > 0)
 	{
 		SH_MANUALHOOK_RECONFIGURE(UpdateOnRemove, offset, 0, 0);
@@ -300,6 +303,8 @@ bool SendProxyManager::SDK_OnLoad(char *error, size_t maxlength, bool late)
 		snprintf(error, maxlength, "Could not get offset for UpdateOnRemove");
 		return false;
 	}
+
+	gameconfs->CloseGameConfigFile(pGameConf);
 
 	sharesys->RegisterLibrary(myself, "sendproxy");
 	plsys->AddPluginsListener(&g_SendProxyManager);
