@@ -398,7 +398,8 @@ class ExtensionConfig(object):
       os.path.join(self.sm_root, 'public'),
       os.path.join(self.sm_root, 'public', 'extensions'),
       os.path.join(self.sm_root, 'sourcepawn', 'include'),
-      os.path.join(self.sm_root, 'public', 'amtl', 'include'),
+      os.path.join(self.sm_root, 'public', 'amtl', 'amtl'),
+      os.path.join(self.sm_root, 'public', 'amtl'),
 
       # Remove when upgraded to SM 1.8
       os.path.join(self.sm_root, 'public', 'sourcepawn'),
