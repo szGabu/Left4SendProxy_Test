@@ -33,12 +33,13 @@
 #endif
 #include "extension.h"
 
+#include <ISDKTools.h>
+
 /**
  * @file extension.cpp
  * @brief Implement extension code here.
  */
 
-SH_DECL_MANUALHOOK0_void(UpdateOnRemove, 0, 0, 0);
 SH_DECL_HOOK1_void(IServerGameClients, ClientDisconnect, SH_NOATTRIB, false, edict_t*);
 SH_DECL_HOOK1_void(IServerGameDLL, GameFrame, SH_NOATTRIB, false, bool);
 
@@ -55,6 +56,7 @@ CUtlVector<PropChangeHookGamerules> g_ChangeHooksGamerules;
 IServerGameEnts *gameents = nullptr;
 IServerGameClients *gameclients = nullptr;
 ISDKTools *g_pSDKTools = nullptr;
+ISDKHooks *g_pSDKHooks = nullptr;
 
 ConVar *sv_parallel_packentities = nullptr;
 
@@ -89,9 +91,8 @@ const sp_nativeinfo_t g_MyNatives[] = {
 	{NULL,	NULL},
 };
 
-void Hook_UpdateOnRemove()
+void SendProxyManager::OnEntityDestroyed(CBaseEntity* pEnt)
 {
-	CBaseEntity *pEnt = META_IFACEPTR(CBaseEntity);
 	int idx = gamehelpers->EntityToBCompatRef(pEnt);
 	for (int i = 0; i < g_Hooks.Count(); i++)
 	{
@@ -106,8 +107,6 @@ void Hook_UpdateOnRemove()
 		if (g_ChangeHooks[i].objectID == idx)
 			g_ChangeHooks.Remove(i--);
 	}
-	SH_REMOVE_MANUALHOOK(UpdateOnRemove, pEnt, SH_STATIC(Hook_UpdateOnRemove), false);
-	RETURN_META(MRES_IGNORED);
 }
 
 void Hook_ClientDisconnect(edict_t* pEnt)
@@ -285,27 +284,6 @@ bool SendProxyManager::SDK_OnLoad(char *error, size_t maxlength, bool late)
 	
 	gameconfs->CloseGameConfigFile(pGameConf);
 
-	if (!gameconfs->LoadGameConfigFile("sendproxy", &pGameConf, conf_error, sizeof(conf_error)))
-	{
-		if (conf_error[0])
-			snprintf(error, maxlength, "Could not read config file sendproxy.txt: %s", conf_error);
-		return false;
-	}
-
-	int offset = 0;
-	pGameConf->GetOffset("UpdateOnRemove", &offset);
-	if (offset > 0)
-	{
-		SH_MANUALHOOK_RECONFIGURE(UpdateOnRemove, offset, 0, 0);
-	}
-	else
-	{
-		snprintf(error, maxlength, "Could not get offset for UpdateOnRemove");
-		return false;
-	}
-
-	gameconfs->CloseGameConfigFile(pGameConf);
-
 	sharesys->RegisterLibrary(myself, "sendproxy");
 	plsys->AddPluginsListener(&g_SendProxyManager);
 
@@ -316,6 +294,12 @@ void SendProxyManager::SDK_OnAllLoaded()
 {
 	sharesys->AddNatives(myself, g_MyNatives);
 	SM_GET_LATE_IFACE(SDKTOOLS, g_pSDKTools);
+	SM_GET_LATE_IFACE(SDKHOOKS, g_pSDKHooks);
+
+	if (g_pSDKHooks)
+	{
+		g_pSDKHooks->AddEntityListener(this);
+	}
 }
 
 void SendProxyManager::SDK_OnUnload()
@@ -323,14 +307,15 @@ void SendProxyManager::SDK_OnUnload()
 	for (int i = 0; i < g_Hooks.Count(); i++)
 	{
 		g_Hooks[i].pVar->SetProxyFn(g_Hooks[i].pRealProxy);
-		CBaseEntity *pbe = gameents->EdictToBaseEntity(g_Hooks[i].pEnt);
-		if (pbe)
-			SH_REMOVE_MANUALHOOK(UpdateOnRemove, pbe, SH_STATIC(Hook_UpdateOnRemove), false);
 	}
 	SH_REMOVE_HOOK(IServerGameClients, ClientDisconnect, gameclients, SH_STATIC(Hook_ClientDisconnect), false);
 	SH_REMOVE_HOOK(IServerGameDLL, GameFrame, gamedll, SH_STATIC(Hook_GameFrame), false);
 
 	plsys->RemovePluginsListener(&g_SendProxyManager);
+	if( g_pSDKHooks )
+	{
+		g_pSDKHooks->RemoveEntityListener(this);
+	}
 }
 
 void SendProxyManager::OnCoreMapEnd()
@@ -387,7 +372,6 @@ bool SendProxyManager::AddHookToList(SendPropHook hook)
 			return false;
 	}
 	CBaseEntity *pbe = gameents->EdictToBaseEntity(hook.pEnt);
-	SH_ADD_MANUALHOOK(UpdateOnRemove, pbe, SH_STATIC(Hook_UpdateOnRemove), false);
 	g_Hooks.AddToTail(hook);
 	return true;
 }

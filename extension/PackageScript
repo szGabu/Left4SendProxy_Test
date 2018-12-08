@@ -9,7 +9,6 @@ builder.SetBuildFolder('package')
 folder_list = [
   'addons/sourcemod/extensions',
   'addons/sourcemod/scripting/include',
-  'addons/sourcemod/gamedata',
 ]
 
 # Create the distribution folder hierarchy.
@@ -33,10 +32,10 @@ CopyFiles('include', 'addons/sourcemod/scripting/include',
 )
 
 # GameData files
-CopyFiles('gamedata', 'addons/sourcemod/gamedata',
-  [ '../../addons/sourcemod/gamedata/sendproxy.txt',
-  ]
-)
+#CopyFiles('gamedata', 'addons/sourcemod/gamedata',
+#  [ '../../addons/sourcemod/gamedata/sendproxy.txt',
+#  ]
+#)
 
 # Config Files
 #CopyFiles('configs', 'addons/sourcemod/configs',

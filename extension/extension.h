@@ -36,12 +36,12 @@
  * @file extension.h
  * @brief Sample extension code header.
  */
-#include <ISDKTools.h>
 #include "smsdk_ext.h"
 #include "dt_send.h"
 #include "server_class.h"
 #include "convar.h"
 #include <string>
+#include <ISDKHooks.h>
 
 #define GET_CONVAR(name) \
 	name = g_pCVar->FindVar(#name); \
@@ -115,7 +115,10 @@ void GlobalProxy(const SendProp *pProp, const void *pStructBase, const void* pDa
  * @brief Sample implementation of the SDK Extension.
  * Note: Uncomment one of the pre-defined virtual functions in order to use it.
  */
-class SendProxyManager : public SDKExtension, public IPluginsListener
+class SendProxyManager :
+	public SDKExtension,
+	public IPluginsListener,
+	public ISMEntityListener
 {
 public:
 	virtual bool SDK_OnLoad(char *error, size_t maxlength, bool late);
@@ -137,7 +140,8 @@ public:
 
 	void UnhookProxy(int i);
 	void UnhookProxyGamerules(int i);
-
+public: // ISMEntityListener
+	virtual void OnEntityDestroyed(CBaseEntity *pEntity);
 public:
 #if defined SMEXT_CONF_METAMOD
 	virtual bool SDK_OnMetamodLoad(ISmmAPI *ismm, char *error, size_t maxlen, bool late);
