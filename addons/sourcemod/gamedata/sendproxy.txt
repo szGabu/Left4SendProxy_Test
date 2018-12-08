@@ -6,8 +6,8 @@
 		{
 			"UpdateOnRemove"
 			{
-				"windows"	"109"
-				"linux"		"110"
+				"windows"	"111"
+				"linux"		"112"
 			}
 		}
 	}
