@@ -12,3 +12,4 @@ Fork of Afronanny's SendProxy Manager [extension](https://forums.alliedmods.net/
 ### 1.3 Changes:
 * Fixed incorrect global proxy callback in SendProxyManager::HookProxyGamerules
 * Now sendproxy entities hooks callbacks calls for each client individually
+* Removed std::string usage to prevent libstdc++ linking in linux build
