@@ -91,7 +91,7 @@ public:
 	IPluginFunction*	pCallback;
 	int					iLastValue;
 	float				flLastValue;
-	std::string			szLastValue;
+	char				cLastValue[4096];
 	SendProp*			pVar;
 	int					PropType;
 	unsigned int		Offset;
@@ -104,13 +104,14 @@ public:
 	IPluginFunction*	pCallback;
 	int					iLastValue;
 	float				flLastValue;
-	std::string			szLastValue;
+	char				cLastValue[4096];
 	SendProp*			pVar;
 	int					PropType;
 	unsigned int		Offset;
 };
 
 void GlobalProxy(const SendProp *pProp, const void *pStructBase, const void* pData, DVariant *pOut, int iElement, int objectID);
+void GlobalProxyGamerules(const SendProp *pProp, const void *pStructBase, const void* pData, DVariant *pOut, int iElement, int objectID);
 /**
  * @brief Sample implementation of the SDK Extension.
  * Note: Uncomment one of the pre-defined virtual functions in order to use it.
@@ -140,6 +141,7 @@ public:
 
 	void UnhookProxy(int i);
 	void UnhookProxyGamerules(int i);
+	virtual int GetClientCount() const;
 public: // ISMEntityListener
 	virtual void OnEntityDestroyed(CBaseEntity *pEntity);
 public:

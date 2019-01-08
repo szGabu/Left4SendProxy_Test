@@ -6,6 +6,8 @@ projectName = 'sendproxy'
 # smsdk_ext.cpp will be automatically added later
 sourceFiles = [
   'extension.cpp',
+  'CDetour/detours.cpp',
+  'asm/asm.c'
 ]
 
 ###############

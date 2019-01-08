@@ -40,9 +40,9 @@
 /* Basic information exposed publicly */
 #define SMEXT_CONF_NAME			"SendProxy Manager"
 #define SMEXT_CONF_DESCRIPTION	"Change stuff without actually changing stuff!"
-#define SMEXT_CONF_VERSION		"1.2"
-#define SMEXT_CONF_AUTHOR		"Afronanny"
-#define SMEXT_CONF_URL			"http://www.afronanny.org/"
+#define SMEXT_CONF_VERSION		"1.3"
+#define SMEXT_CONF_AUTHOR		"afronanny & AlliedModders community"
+#define SMEXT_CONF_URL			"https://forums.alliedmods.net/showthread.php?t=169795"
 #define SMEXT_CONF_LOGTAG		"SENDPROXY"
 #define SMEXT_CONF_LICENSE		"GPL"
 #define SMEXT_CONF_DATESTRING	__DATE__
@@ -61,7 +61,7 @@
 /** Enable interfaces you want to use here by uncommenting lines */
 #define SMEXT_ENABLE_FORWARDSYS
 //#define SMEXT_ENABLE_HANDLESYS
-//#define SMEXT_ENABLE_PLAYERHELPERS
+#define SMEXT_ENABLE_PLAYERHELPERS
 //#define SMEXT_ENABLE_DBMANAGER
 #define SMEXT_ENABLE_GAMECONF
 //#define SMEXT_ENABLE_MEMUTILS
@@ -77,5 +77,6 @@
 //#define SMEXT_ENABLE_USERMSGS
 //#define SMEXT_ENABLE_TRANSLATOR
 //#define SMEXT_ENABLE_NINVOKE
+#define SMEXT_ENABLE_ROOTCONSOLEMENU
 
 #endif // _INCLUDE_SOURCEMOD_EXTENSION_CONFIG_H_

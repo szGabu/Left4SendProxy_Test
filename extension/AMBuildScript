@@ -158,7 +158,7 @@ class ExtensionConfig(object):
       have_clang = cxx.vendor == 'clang'
       if have_clang or (have_gcc and cxx.version >= '4'):
         cxx.cflags += ['-fvisibility=hidden']
-        cxx.cxxflags += ['-fvisibility-inlines-hidden']
+        cxx.cxxflags += ['-fvisibility-inlines-hidden', '-fno-rtti']
         if have_clang or (have_gcc and cxx.version >= '4.6'):
           cxx.cflags += ['-Wno-narrowing']
         if (have_gcc and cxx.version >= '4.7') or (have_clang and cxx.version >= '3'):
@@ -225,7 +225,7 @@ class ExtensionConfig(object):
       if cxx.like('gcc'):
         cxx.cflags += ['-O3']
       elif cxx.like('msvc'):
-        cxx.cflags += ['/Ox', '/Zo']
+        cxx.cflags += ['/Ox', '/Zo', '/Oi', '/GL', '\Ot']
         cxx.linkflags += ['/OPT:ICF', '/OPT:REF']
 
     # Debugging
@@ -246,7 +246,7 @@ class ExtensionConfig(object):
       if cxx.vendor == 'gcc':
         cxx.linkflags += ['-static-libgcc']
       elif cxx.vendor == 'clang':
-        cxx.linkflags += ['-lgcc_eh']
+        cxx.linkflags += ['-lgcc_eh', '-s']
     elif builder.target_platform == 'mac':
       cxx.defines += ['OSX', '_OSX', 'POSIX']
       cxx.cflags += ['-mmacosx-version-min=10.5']

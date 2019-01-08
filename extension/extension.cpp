@@ -28,22 +28,81 @@
  *
  * Version: $Id$
  */
+ 
+ /*
+	TODO:
+		gamerules props should also sends individually for each client
+		more optimizations! =D
+ */
+
 #ifdef _WIN32
 #undef GetProp
+#ifdef _WIN64
+	#define PLATFORM_x64
+#else
+	#define PLATFORM_x32
 #endif
+#elif defined __linux__
+	#if defined __x86_64__
+		#define PLATFORM_x64
+	#else
+		#define PLATFORM_x32
+	#endif
+#endif
+
+#ifdef _WIN32
+	#define FAKECLIENT_KEY "CreateFakeClient_Windows"
+#elif defined __linux__
+	#ifdef PLATFORM_x64
+		#define FAKECLIENT_KEY "CreateFakeClient_Linux64"
+	#else
+		#define FAKECLIENT_KEY "CreateFakeClient_Linux"
+	#endif
+#elif defined PLATFORM_APPLE
+	#define FAKECLIENT_KEY "CreateFakeClient_Mac"
+#else
+	#error "Unsupported platform"
+#endif
+
+#include "CDetour/detours.h"
 #include "extension.h"
 
 #include <ISDKTools.h>
+//path: hl2sdk-<your sdk here>/public/<include>.h, "../public/" included to prevent compile errors due wrong directory scanning by compiler on my computer, and I'm too lazy to find where I can change that =D
+#include <../public/eiface.h>
+#include <../public/iserver.h>
+#include <../public/iclient.h>
 
-/**
- * @file extension.cpp
- * @brief Implement extension code here.
- */
-
-SH_DECL_HOOK1_void(IServerGameClients, ClientDisconnect, SH_NOATTRIB, false, edict_t*);
+SH_DECL_HOOK1_void(IServerGameClients, ClientDisconnect, SH_NOATTRIB, false, edict_t *);
 SH_DECL_HOOK1_void(IServerGameDLL, GameFrame, SH_NOATTRIB, false, bool);
+SH_DECL_HOOK0(IServer, GetClientCount, const, false, int);
 
-SendProxyManager g_SendProxyManager;		/**< Global singleton for extension's main interface */
+DECL_DETOUR(CGameServer_SendClientMessages);
+DECL_DETOUR(CGameClient_ShouldSendMessages);
+#if SOURCE_ENGINE != SE_CSGO
+DECL_DETOUR(SV_ComputeClientPacks);
+#endif
+
+#ifdef PLATFORM_x64
+	#include <stdint.h>
+	#define int_for_clptr int64_t
+#else
+	#define int_for_clptr int
+#endif
+
+class CGameClient;
+class CFrameSnapshot;
+
+//we will use integer to store pointer lol
+int_for_clptr g_iCurrentGameClientPtr = 0;
+int g_iCurrentClientIndexInLoop = -1; //used for optimization
+bool g_bCurrentGameClientCallFwd = false;
+bool g_bCallingForNullClients = false;
+bool g_bFirstTimeCalled = true;
+bool g_bSVComputePacksDone = false;
+IServer * g_pIServer = nullptr;
+
+SendProxyManager g_SendProxyManager;
 SMEXT_LINK(&g_SendProxyManager);
 
 CThreadFastMutex g_WorkMutex;
@@ -52,28 +111,33 @@ CUtlVector<SendPropHook> g_Hooks;
 CUtlVector<SendPropHookGamerules> g_HooksGamerules;
 CUtlVector<PropChangeHook> g_ChangeHooks;
 CUtlVector<PropChangeHookGamerules> g_ChangeHooksGamerules;
+CUtlVector<edict_t *> g_vHookedEdicts;
 
-IServerGameEnts *gameents = nullptr;
-IServerGameClients *gameclients = nullptr;
-ISDKTools *g_pSDKTools = nullptr;
-ISDKHooks *g_pSDKHooks = nullptr;
+IServerGameEnts * gameents = nullptr;
+IServerGameClients * gameclients = nullptr;
+ISDKTools * g_pSDKTools = nullptr;
+ISDKHooks * g_pSDKHooks = nullptr;
+IGameConfig * g_pGameConf = nullptr;
+IGameConfig * g_pGameConfSDKTools = nullptr;
 
-ConVar *sv_parallel_packentities = nullptr;
+ConVar * sv_parallel_packentities = nullptr;
 
-static cell_t Native_Hook(IPluginContext* pContext, const cell_t* params);
-static cell_t Native_HookGameRules(IPluginContext* pContext, const cell_t* params);
-static cell_t Native_Unhook(IPluginContext* pContext, const cell_t* params);
-static cell_t Native_UnhookGameRules(IPluginContext* pContext, const cell_t* params);
-static cell_t Native_IsHooked(IPluginContext* pContext, const cell_t* params);
-static cell_t Native_IsHookedGameRules(IPluginContext* pContext, const cell_t* params);
-static cell_t Native_HookArrayProp(IPluginContext* pContext, const cell_t* params);
-static cell_t Native_UnhookArrayProp(IPluginContext* pContext, const cell_t* params);
-static cell_t Native_HookPropChange(IPluginContext* pContext, const cell_t* params);
-static cell_t Native_HookPropChangeGameRules(IPluginContext* pContext, const cell_t* params);
-static cell_t Native_UnhookPropChange(IPluginContext* pContext, const cell_t* params);
-static cell_t Native_UnhookPropChangeGameRules(IPluginContext* pContext, const cell_t* params);
+static cell_t Native_Hook(IPluginContext * pContext, const cell_t  * params);
+static cell_t Native_HookGameRules(IPluginContext * pContext, const cell_t * params);
+static cell_t Native_Unhook(IPluginContext * pContext, const cell_t * params);
+static cell_t Native_UnhookGameRules(IPluginContext * pContext, const cell_t * params);
+static cell_t Native_IsHooked(IPluginContext * pContext, const cell_t * params);
+static cell_t Native_IsHookedGameRules(IPluginContext * pContext, const cell_t * params);
+static cell_t Native_HookArrayProp(IPluginContext * pContext, const cell_t * params);
+static cell_t Native_UnhookArrayProp(IPluginContext * pContext, const cell_t * params);
+static cell_t Native_HookPropChange(IPluginContext * pContext, const cell_t * params);
+static cell_t Native_HookPropChangeGameRules(IPluginContext * pContext, const cell_t * params);
+static cell_t Native_UnhookPropChange(IPluginContext * pContext, const cell_t * params);
+static cell_t Native_UnhookPropChangeGameRules(IPluginContext * pContext, const cell_t * params);
 
-const char *g_szGameRulesProxy;
+static IServer * GetIServer();
+
+const char * g_szGameRulesProxy;
 
 const sp_nativeinfo_t g_MyNatives[] = {
 	{"SendProxy_Hook", Native_Hook},
@@ -90,6 +154,162 @@ const sp_nativeinfo_t g_MyNatives[] = {
 	{"SendProxy_UnhookPropChangeGameRules", Native_UnhookPropChangeGameRules},
 	{NULL,	NULL},
 };
+
+//detours
+
+/*Call stack:
+	...
+	1. CGameServer::SendClientMessages //function we hooking to send props individually for each client
+	2. SV_ComputeClientPacks //function we hooking to set edicts state and to know, need we call callbacks or not, but not in csgo
+	3. PackEntities_Normal //if we in multiplayer
+	4. SV_PackEntity //also we can hook this instead hooking ProxyFn, but there no reason to do that
+	5. SendTable_Encode
+	6. SendTable_EncodeProp //here the ProxyFn will be called
+	7. ProxyFn //here our callbacks is called
+*/
+
+DETOUR_DECL_MEMBER1(CGameServer_SendClientMessages, void, bool, bSendSnapshots)
+{
+	if (!bSendSnapshots)
+		return DETOUR_MEMBER_CALL(CGameServer_SendClientMessages)(false); //if so, we do not interested in this call
+	if (!g_pIServer && g_pSDKTools)
+		g_pIServer = g_pSDKTools->GetIServer();
+	if (!g_pIServer)
+		return DETOUR_MEMBER_CALL(CGameServer_SendClientMessages)(true); //if so, we should stop to process this function! See below
+	if (g_bFirstTimeCalled)
+	{
+#ifdef _WIN32
+		//HACK, don't delete this, or server will be crashed on start!
+		g_pIServer->GetClientCount();
+#endif
+		SH_ADD_HOOK(IServer, GetClientCount, g_pIServer, SH_MEMBER(&g_SendProxyManager, &SendProxyManager::GetClientCount), false);
+		g_bFirstTimeCalled = false;
+	}
+	bool bCalledForNullIClientsThisTime = false;
+	for (int iClients = 1; iClients <= playerhelpers->GetMaxClients(); iClients++)
+	{
+		IGamePlayer * pPlayer = playerhelpers->GetGamePlayer(iClients);
+		bool bFake = (pPlayer->IsFakeClient() && !(pPlayer->IsSourceTV()
+#if SOURCE_ENGINE == SE_TF2
+		|| pPlayer->IsReplay()
+#endif
+		));
+		volatile IClient * pClient = nullptr; //volatile used to prevent optimizations here for some reason
+		if (!pPlayer->IsConnected() || bFake || (pClient = g_pIServer->GetClient(iClients - 1)) == nullptr)
+		{
+			if (!bCalledForNullIClientsThisTime && !g_bCallingForNullClients)
+			{
+				g_bCurrentGameClientCallFwd = false;
+				g_bCallingForNullClients = true;
+				DETOUR_MEMBER_CALL(CGameServer_SendClientMessages)(true);
+				g_bCallingForNullClients = false;
+			}
+			bCalledForNullIClientsThisTime = true;
+			continue;
+		}
+		if (!pPlayer->IsInGame() || bFake) //We should call SV_ComputeClientPacks, but shouldn't call forwards!
+			g_bCurrentGameClientCallFwd = false;
+		else
+			g_bCurrentGameClientCallFwd = true;
+		g_iCurrentGameClientPtr = reinterpret_cast<int_for_clptr>(pClient) - 4;
+		g_iCurrentClientIndexInLoop = iClients - 1;
+		DETOUR_MEMBER_CALL(CGameServer_SendClientMessages)(true);
+	}
+	g_bCurrentGameClientCallFwd = false;
+	g_iCurrentClientIndexInLoop = -1;
+}
+
+DETOUR_DECL_MEMBER0(CGameClient_ShouldSendMessages, bool)
+{
+#if SOURCE_ENGINE == SE_CSGO
+	g_bSVComputePacksDone = false;
+#endif
+	if (g_bCallingForNullClients)
+	{
+		IClient * pClient = (IClient *)((char *)this + 4);
+#if SOURCE_ENGINE == SE_TF2
+		//don't remove this code
+		int iUserID = pClient->GetUserID();
+		IGamePlayer * pPlayer = playerhelpers->GetGamePlayer(pClient->GetPlayerSlot() + 1);
+		if (pPlayer->GetUserId() != iUserID) //if so, there something went wrong, check this now!
+#endif
+		{
+			if (pClient->IsHLTV()
+#if SOURCE_ENGINE == SE_TF2
+			|| pClient->IsReplay()
+#endif
+			|| (pClient->IsConnected() && !pClient->IsActive()))
+				return true; //Also we need to allow connect for inactivated clients, sourcetv & replay
+		}
+		return false;
+	}
+	bool bOriginalResult = DETOUR_MEMBER_CALL(CGameClient_ShouldSendMessages)();
+	if (!bOriginalResult)
+		return false;
+	if (reinterpret_cast<int_for_clptr>(this) == g_iCurrentGameClientPtr)
+	{
+#if SOURCE_ENGINE == SE_CSGO
+		//if we in csgo, we should do stuff from SV_ComputeClientPacks here, or server will crash when SV_ComputeClientPacks is called
+		IClient * pClient = (IClient *)((char *)this + 4);
+		int iClient = pClient->GetPlayerSlot();
+		if (g_iCurrentClientIndexInLoop == iClient)
+		{
+			for (int i = 0; i < g_vHookedEdicts.Count(); i++)
+			{
+				edict_t * pEdict = g_vHookedEdicts[i];
+				if (pEdict && !(pEdict->m_fStateFlags & FL_EDICT_CHANGED))
+					pEdict->m_fStateFlags |= FL_EDICT_CHANGED;
+			}
+			if (g_bCurrentGameClientCallFwd)
+				g_bSVComputePacksDone = true;
+		}
+#endif
+		return true;
+	}
+#if defined PLATFORM_x32 && SOURCE_ENGINE == SE_TF2 //I'm too lazy to do same optimization for csgo, somebody else can do this if he want
+	else
+	{
+		int iTemp = 0, iToSet = g_iCurrentClientIndexInLoop - 1;
+		//just set the loop var to needed for us value, some optimization
+#ifdef _WIN32
+		__asm mov iTemp, ebx
+		if (iTemp < iToSet)
+			__asm mov ebx, iToSet
+#elif defined __linux__
+		asm("movl %%esi, %0" : "=r" (iTemp));
+		if (iTemp < iToSet)
+			asm("movl %0, %%esi" : "=r" (iToSet));
+#endif
+	}
+#endif
+	return false;
+}
+
+#if SOURCE_ENGINE != SE_CSGO
+DETOUR_DECL_STATIC3(SV_ComputeClientPacks, void, int, iClientCount, CGameClient **, pClients, CFrameSnapshot *, pSnapShot)
+{
+	g_bSVComputePacksDone = false;
+	if (!iClientCount || reinterpret_cast<int_for_clptr>(pClients[0]) != g_iCurrentGameClientPtr)
+		return DETOUR_STATIC_CALL(SV_ComputeClientPacks)(iClientCount, pClients, pSnapShot);
+	IClient * pClient = (IClient *)((char *)pClients[0] + 4);
+	int iClient = pClient->GetPlayerSlot();
+	if (g_iCurrentClientIndexInLoop != iClient)
+		return DETOUR_STATIC_CALL(SV_ComputeClientPacks)(iClientCount, pClients, pSnapShot);
+	//Also here we can change actual values for each client! But for what?
+	//Just mark all hooked edicts as changed to bypass check in SV_PackEntity!
+	for (int i = 0; i < g_vHookedEdicts.Count(); i++)
+	{
+		edict_t * pEdict = g_vHookedEdicts[i];
+		if (pEdict && !(pEdict->m_fStateFlags & FL_EDICT_CHANGED))
+			pEdict->m_fStateFlags |= FL_EDICT_CHANGED;
+	}
+	if (g_bCurrentGameClientCallFwd)
+		g_bSVComputePacksDone = true;
+	return DETOUR_STATIC_CALL(SV_ComputeClientPacks)(iClientCount, pClients, pSnapShot);
+}
+#endif
+
+//hooks
 
 void SendProxyManager::OnEntityDestroyed(CBaseEntity* pEnt)
 {
@@ -178,15 +398,15 @@ void Hook_GameFrame(bool simulating)
 					edict_t* pEnt = gamehelpers->EdictOfIndex(g_ChangeHooks[i].objectID);
 					CBaseEntity* pEntity = gameents->EdictToBaseEntity(pEnt);
 					const char* szCurrent = (const char*)((unsigned char*)pEntity + g_ChangeHooks[i].Offset);
-					if (strcmp(szCurrent, g_ChangeHooks[i].szLastValue.c_str()) != 0)
+					if (strcmp(szCurrent, g_ChangeHooks[i].cLastValue) != 0)
 					{
 						g_ChangeHooks[i].pCallback->PushCell(g_ChangeHooks[i].objectID);
 						g_ChangeHooks[i].pCallback->PushString(g_ChangeHooks[i].pVar->GetName());
-						g_ChangeHooks[i].pCallback->PushString(g_ChangeHooks[i].szLastValue.c_str());
+						g_ChangeHooks[i].pCallback->PushString(g_ChangeHooks[i].cLastValue);
 						g_ChangeHooks[i].pCallback->PushString(szCurrent);
 						g_ChangeHooks[i].pCallback->Execute(0);
-						g_ChangeHooks[i].szLastValue.clear();
-						g_ChangeHooks[i].szLastValue.append(szCurrent);
+						memset(g_ChangeHooks[i].cLastValue, 0, sizeof(g_ChangeHooks[i].cLastValue));
+						strncpy(g_ChangeHooks[i].cLastValue, szCurrent, sizeof(g_ChangeHooks[i].cLastValue));
 					}
 					break;
 				}
@@ -248,14 +468,14 @@ void Hook_GameFrame(bool simulating)
 				case Prop_String:
 				{
 					const char* szCurrent = (const char*)((unsigned char*)pGamerules + g_ChangeHooksGamerules[i].Offset);
-					if (strcmp(szCurrent, g_ChangeHooksGamerules[i].szLastValue.c_str()) != 0)
+					if (strcmp(szCurrent, g_ChangeHooksGamerules[i].cLastValue) != 0)
 					{
 						g_ChangeHooksGamerules[i].pCallback->PushString(g_ChangeHooksGamerules[i].pVar->GetName());
-						g_ChangeHooksGamerules[i].pCallback->PushString(g_ChangeHooksGamerules[i].szLastValue.c_str());
+						g_ChangeHooksGamerules[i].pCallback->PushString(g_ChangeHooksGamerules[i].cLastValue);
 						g_ChangeHooksGamerules[i].pCallback->PushString(szCurrent);
 						g_ChangeHooksGamerules[i].pCallback->Execute(0);
-						g_ChangeHooksGamerules[i].szLastValue.clear();
-						g_ChangeHooksGamerules[i].szLastValue.append(szCurrent);
+						memset(g_ChangeHooks[i].cLastValue, 0, sizeof(g_ChangeHooks[i].cLastValue));
+						strncpy(g_ChangeHooks[i].cLastValue, szCurrent, sizeof(g_ChangeHooks[i].cLastValue));
 					}
 					break;
 				}
@@ -268,21 +488,49 @@ void Hook_GameFrame(bool simulating)
 	}
 	RETURN_META(MRES_IGNORED);
 }
+
+int SendProxyManager::GetClientCount() const
+{
+	if (g_iCurrentClientIndexInLoop != -1)
+		RETURN_META_VALUE(MRES_SUPERCEDE, g_iCurrentClientIndexInLoop + 1);
+	RETURN_META_VALUE(MRES_IGNORED, 0/*META_RESULT_ORIG_RET(int)*/);
+}
+
+//main sm class implementation
+
 bool SendProxyManager::SDK_OnLoad(char *error, size_t maxlength, bool late)
 {
-	IGameConfig* pGameConf;
-
 	char conf_error[255];
-	if (!gameconfs->LoadGameConfigFile("sdktools.games", &pGameConf, conf_error, sizeof(conf_error)))
+	if (!gameconfs->LoadGameConfigFile("sdktools.games", &g_pGameConfSDKTools, conf_error, sizeof(conf_error)))
 	{
 		if (conf_error[0])
 			snprintf(error, maxlength, "Could not read config file sdktools.games.txt: %s", conf_error);
 		return false;
 	}
 	
-	g_szGameRulesProxy = pGameConf->GetKeyValue("GameRulesProxy");
+	g_szGameRulesProxy = g_pGameConfSDKTools->GetKeyValue("GameRulesProxy");
 	
-	gameconfs->CloseGameConfigFile(pGameConf);
+	if (!gameconfs->LoadGameConfigFile("sendproxy", &g_pGameConf, conf_error, sizeof(conf_error)))
+	{
+		if (conf_error[0])
+			snprintf(error, maxlength, "Could not read config file sendproxy.txt: %s", conf_error);
+		return false;
+	}
+	
+	CDetourManager::Init(smutils->GetScriptingEngine(), g_pGameConf);
+	
+	bool bDetoursInited = false;
+	CREATE_DETOUR(CGameServer_SendClientMessages, "CGameServer::SendClientMessages", bDetoursInited);
+	CREATE_DETOUR(CGameClient_ShouldSendMessages, "CGameClient::ShouldSendMessages", bDetoursInited);
+#if SOURCE_ENGINE != SE_CSGO
+	CREATE_DETOUR_STATIC(SV_ComputeClientPacks, "SV_ComputeClientPacks", bDetoursInited);
+#endif
+	
+	if (!bDetoursInited)
+	{
+		snprintf(error, maxlength, "Could not create detours, see error log!");
+		return false;
+	}
 
 	sharesys->RegisterLibrary(myself, "sendproxy");
 	plsys->AddPluginsListener(&g_SendProxyManager);
@@ -308,9 +556,21 @@ void SendProxyManager::SDK_OnUnload()
 	{
 		g_Hooks[i].pVar->SetProxyFn(g_Hooks[i].pRealProxy);
 	}
+	
 	SH_REMOVE_HOOK(IServerGameClients, ClientDisconnect, gameclients, SH_STATIC(Hook_ClientDisconnect), false);
 	SH_REMOVE_HOOK(IServerGameDLL, GameFrame, gamedll, SH_STATIC(Hook_GameFrame), false);
+	if (!g_bFirstTimeCalled)
+		SH_REMOVE_HOOK(IServer, GetClientCount, g_pIServer, SH_MEMBER(this, &SendProxyManager::GetClientCount), false);
 
+	DESTROY_DETOUR(CGameServer_SendClientMessages);
+	DESTROY_DETOUR(CGameClient_ShouldSendMessages);
+#if SOURCE_ENGINE != SE_CSGO
+	DESTROY_DETOUR(SV_ComputeClientPacks);
+#endif
+	
+	gameconfs->CloseGameConfigFile(g_pGameConf);
+	gameconfs->CloseGameConfigFile(g_pGameConfSDKTools);
+	
 	plsys->RemovePluginsListener(&g_SendProxyManager);
 	if( g_pSDKHooks )
 	{
@@ -336,7 +596,7 @@ bool SendProxyManager::SDK_OnMetamodLoad(ISmmAPI *ismm, char *error, size_t maxl
 	SH_ADD_HOOK(IServerGameClients, ClientDisconnect, gameclients, SH_STATIC(Hook_ClientDisconnect), false);
 	
 	GET_CONVAR(sv_parallel_packentities);
-	sv_parallel_packentities->SetValue(0);//If we don't do that the sendproxy extension will crash the server (Post ref: https://forums.alliedmods.net/showpost.php?p=2540106&postcount=324 )
+	sv_parallel_packentities->SetValue(0); //If we don't do that the sendproxy extension will crash the server (Post ref: https://forums.alliedmods.net/showpost.php?p=2540106&postcount=324 )
 	
 	return true;
 }
@@ -363,16 +623,26 @@ void SendProxyManager::OnPluginUnloaded(IPlugin *plugin)
 }
 
 
+//functions
+
 bool SendProxyManager::AddHookToList(SendPropHook hook)
 {
 	//Need to make sure this prop isn't already hooked for this entity
+	bool bEdictHooked = false;
 	for (int i = 0; i < g_Hooks.Count(); i++)
 	{
-		if (g_Hooks[i].pVar == hook.pVar && g_Hooks[i].objectID == hook.objectID)
-			return false;
+		if (g_Hooks[i].objectID == hook.objectID)
+		{
+			if (g_Hooks[i].pVar == hook.pVar)
+				return false;
+			else
+				bEdictHooked = true;
+		}
 	}
-	CBaseEntity *pbe = gameents->EdictToBaseEntity(hook.pEnt);
+	//CBaseEntity *pbe = gameents->EdictToBaseEntity(hook.pEnt);
 	g_Hooks.AddToTail(hook);
+	if (!bEdictHooked)
+		g_vHookedEdicts.AddToTail(hook.pEnt);
 	return true;
 }
 
@@ -424,7 +694,7 @@ bool SendProxyManager::HookProxyGamerules(SendProp* pProp, IPluginFunction *pCal
 	hook.pVar = pProp;
 	hook.pRealProxy = pProp->GetProxyFn();
 	if (AddHookToListGamerules(hook))
-		pProp->SetProxyFn(GlobalProxy);
+		pProp->SetProxyFn(GlobalProxyGamerules);
 	else
 		return false;
 
@@ -439,10 +709,16 @@ void SendProxyManager::UnhookProxy(int i)
 	{
 		if (g_Hooks[j].pVar == g_Hooks[i].pVar && i != j)
 		{
-			g_Hooks.Remove(i);
+			g_Hooks.Remove(i); //for others: this not a mistake
 			return;
 		}
 	}
+	for (int j = 0; j < g_vHookedEdicts.Count(); j++)
+		if (g_vHookedEdicts[j] == g_Hooks[i].pEnt)
+		{
+			g_vHookedEdicts.Remove(j);
+			break;
+		}
 	g_Hooks[i].pVar->SetProxyFn(g_Hooks[i].pRealProxy);
 	g_Hooks.Remove(i);
 }
@@ -462,18 +738,23 @@ void SendProxyManager::UnhookProxyGamerules(int i)
 	g_HooksGamerules.Remove(i);
 }
 
+//callbacks
+
 bool CallInt(SendPropHook hook, int *ret)
 {
+	if (!g_bSVComputePacksDone)
+		return false;
 	AUTO_LOCK_FM(g_WorkMutex);
 
 	IPluginFunction *callback = hook.pCallback;
-	CBaseEntity *pbe = gameents->EdictToBaseEntity(hook.pEnt);
+	//CBaseEntity *pbe = gameents->EdictToBaseEntity(hook.pEnt);
 	cell_t value = *ret;
 	cell_t result = Pl_Continue;
 	callback->PushCell(hook.objectID);
 	callback->PushString(hook.pVar->GetName());
 	callback->PushCellByRef(&value);
 	callback->PushCell(hook.Element);
+	callback->PushCell(g_iCurrentClientIndexInLoop + 1);
 	callback->Execute(&result);
 	if (result == Pl_Changed)
 	{
@@ -504,16 +785,19 @@ bool CallIntGamerules(SendPropHookGamerules hook, int *ret)
 
 bool CallFloat(SendPropHook hook, float *ret)
 {
+	if (!g_bSVComputePacksDone)
+		return false;
 	AUTO_LOCK_FM(g_WorkMutex);
 
 	IPluginFunction *callback = hook.pCallback;
-	CBaseEntity *pbe = gameents->EdictToBaseEntity(hook.pEnt);
+	//CBaseEntity *pbe = gameents->EdictToBaseEntity(hook.pEnt);
 	float value = *ret;
 	cell_t result = Pl_Continue;
 	callback->PushCell(hook.objectID);
 	callback->PushString(hook.pVar->GetName());
 	callback->PushFloatByRef(&value);
 	callback->PushCell(hook.Element);
+	callback->PushCell(g_iCurrentClientIndexInLoop + 1);
 	callback->Execute(&result);
 	if (result == Pl_Changed)
 	{
@@ -544,6 +828,8 @@ bool CallFloatGamerules(SendPropHookGamerules hook, float *ret)
 
 bool CallString(SendPropHook hook, char **ret)
 {
+	if (!g_bSVComputePacksDone)
+		return false;
 	AUTO_LOCK_FM(g_WorkMutex);
 
 	IPluginFunction *callback = hook.pCallback;
@@ -557,6 +843,7 @@ bool CallString(SendPropHook hook, char **ret)
 	callback->PushString(hook.pVar->GetName());
 	callback->PushStringEx(value, 4096, SM_PARAM_STRING_UTF8 | SM_PARAM_STRING_COPY, SM_PARAM_COPYBACK);
 	callback->PushCell(hook.Element);
+	callback->PushCell(g_iCurrentClientIndexInLoop + 1);
 	callback->Execute(&result);
 	if (result == Pl_Changed)
 	{
@@ -596,6 +883,8 @@ bool CallStringGamerules(SendPropHookGamerules hook, char **ret)
 
 bool CallVector(SendPropHook hook, Vector &vec)
 {
+	if (!g_bSVComputePacksDone)
+		return false;
 	AUTO_LOCK_FM(g_WorkMutex);
 
 	IPluginFunction *callback = hook.pCallback;
@@ -610,6 +899,7 @@ bool CallVector(SendPropHook hook, Vector &vec)
 	callback->PushString(hook.pVar->GetName());
 	callback->PushArray(vector, 3, SM_PARAM_COPYBACK);
 	callback->PushCell(hook.Element);
+	callback->PushCell(g_iCurrentClientIndexInLoop + 1);
 	callback->Execute(&result);
 	if (result == Pl_Changed)
 	{
@@ -710,7 +1000,7 @@ void GlobalProxy(const SendProp *pProp, const void *pStructBase, const void* pDa
 						return;
 					}
 				}
-				default: printf("wat do?\n");
+				default: rootconsole->ConsolePrint("SendProxy report: Unknown prop type.");
 			}
 		}
 	}
@@ -724,7 +1014,6 @@ void GlobalProxy(const SendProp *pProp, const void *pStructBase, const void* pDa
 		}
 	}
 	g_pSM->LogError(myself, "CRITICAL: Proxy for unmanaged entity %d called for prop %s", objectID, pProp->GetName());
-	
 }
 
 void GlobalProxyGamerules(const SendProp *pProp, const void *pStructBase, const void* pData, DVariant *pOut, int iElement, int objectID)
@@ -797,7 +1086,7 @@ void GlobalProxyGamerules(const SendProp *pProp, const void *pStructBase, const 
 						return;
 					}
 				}
-				default: printf("wat do?\n");
+				default: rootconsole->ConsolePrint("SendProxy report: Unknown prop type.");
 			}
 		}
 	}
@@ -815,6 +1104,8 @@ void GlobalProxyGamerules(const SendProp *pProp, const void *pStructBase, const 
 }
 //PropChanged(entity, const String:propname[], const String:oldValue[], const String:newValue[])
 //SendProxy_HookPropChange(entity, const String:name[], PropChanged:callback)
+
+//Natives
 
 static cell_t Native_UnhookPropChange(IPluginContext* pContext, const cell_t* params)
 {
@@ -881,7 +1172,7 @@ static cell_t Native_HookPropChange(IPluginContext* pContext, const cell_t* para
 	{
 	case DPT_Int: hook.PropType = Prop_Int; hook.iLastValue = *(int*)((unsigned char*)pEntity + offset); break;
 	case DPT_Float: hook.PropType = Prop_Float; hook.flLastValue = *(float*)((unsigned char*)pEntity + offset); break;
-	case DPT_String: hook.PropType = Prop_String; hook.szLastValue = *(const char*)((unsigned char*)pEntity + offset); break;
+	case DPT_String: hook.PropType = Prop_String; strncpy(hook.cLastValue, (const char*)((unsigned char*)pEntity + offset), sizeof(hook.cLastValue)); break;
 	default: return pContext->ThrowNativeError("Prop type %d is not yet supported", type);
 	}
 
@@ -923,7 +1214,7 @@ static cell_t Native_HookPropChangeGameRules(IPluginContext* pContext, const cel
 	{
 	case DPT_Int: hook.PropType = Prop_Int; hook.iLastValue = *(int*)((unsigned char*)pGamerules + offset); break;
 	case DPT_Float: hook.PropType = Prop_Float; hook.flLastValue = *(float*)((unsigned char*)pGamerules + offset); break;
-	case DPT_String: hook.PropType = Prop_String; hook.szLastValue = *(const char*)((unsigned char*)pGamerules + offset); break;
+	case DPT_String: hook.PropType = Prop_String; strncpy(hook.cLastValue, (const char*)((unsigned char*)pGamerules + offset), sizeof(hook.cLastValue)); break;
 	default: return pContext->ThrowNativeError("Prop type %d is not yet supported", type);
 	}
 
@@ -1102,7 +1393,6 @@ after:
 	return 1;
 }
 
-
 //native SendProxy_HookArrayProp(entity, const String:name[], element, SendPropType:type, SendProxyCallback:callback);
 
 static cell_t Native_HookArrayProp(IPluginContext* pContext, const cell_t* params)
@@ -1210,7 +1500,7 @@ static cell_t Native_Unhook(IPluginContext* pContext, const cell_t* params)
 	return 0;
 }
 
-static cell_t Native_UnhookGameRules(IPluginContext* pContext, const cell_t* params)//To-do break all the gamerules hook on map end.
+static cell_t Native_UnhookGameRules(IPluginContext* pContext, const cell_t* params)
 {
 	char *propName;
 	pContext->LocalToString(params[1], &propName);
@@ -1251,4 +1541,113 @@ static cell_t Native_IsHookedGameRules(IPluginContext* pContext, const cell_t* p
 			return 1;
 	}
 	return 0;
+}
+
+//helpers
+
+//code below copied from sdktools!
+static size_t UTIL_StringToSignature(const char *str, char buffer[], size_t maxlength)
+{
+	size_t real_bytes = 0;
+	size_t length = strlen(str);
+
+	for (size_t i=0; i<length; i++)
+	{
+		if (real_bytes >= maxlength)
+		{
+			break;
+		}
+		buffer[real_bytes++] = (unsigned char)str[i];
+		if (str[i] == '\\'
+			&& str[i+1] == 'x')
+		{
+			if (i + 3 >= length)
+			{
+				continue;
+			}
+			/* Get the hex part */
+			char s_byte[3];
+			int r_byte;
+			s_byte[0] = str[i+2];
+			s_byte[1] = str[i+3];
+			s_byte[2] = '\n';
+			/* Read it as an integer */
+			sscanf(s_byte, "%x", &r_byte);
+			/* Save the value */
+			buffer[real_bytes-1] = (unsigned char)r_byte;
+			/* Adjust index */
+			i += 3;
+		}
+	}
+
+	return real_bytes;
+}
+
+static bool UTIL_VerifySignature(const void *addr, const char *sig, size_t len)
+{
+	unsigned char *addr1 = (unsigned char *) addr;
+	unsigned char *addr2 = (unsigned char *) sig;
+
+	for (size_t i = 0; i < len; i++)
+	{
+		if (addr2[i] == '*')
+			continue;
+		if (addr1[i] != addr2[i])
+			return false;
+	}
+
+	return true;
+}
+
+static IServer * GetIServer()
+{
+#if SOURCE_ENGINE == SE_TF2        \
+	|| SOURCE_ENGINE == SE_DODS    \
+	|| SOURCE_ENGINE == SE_HL2DM   \
+	|| SOURCE_ENGINE == SE_CSS     \
+	|| SOURCE_ENGINE == SE_SDK2013 \
+	|| SOURCE_ENGINE == SE_BMS     \
+	|| SOURCE_ENGINE == SE_DOI     \
+	|| SOURCE_ENGINE == SE_INSURGENCY
+
+#if SOURCE_ENGINE != SE_INSURGENCY && SOURCE_ENGINE != SE_DOI
+	if (g_SMAPI->GetEngineFactory(false)("VEngineServer022", nullptr))
+#endif // !SE_INSURGENCY
+		return engine->GetIServer();
+#endif
+
+	void *addr;
+	const char *sigstr;
+	char sig[32];
+	size_t siglen;
+	int offset;
+	void *vfunc = NULL;
+
+	/* Use the symbol if it exists */
+	if (g_pGameConfSDKTools->GetMemSig("sv", &addr) && addr)
+		return reinterpret_cast<IServer *>(addr);
+
+	/* Get the CreateFakeClient function pointer */
+	if (!(vfunc=SH_GET_ORIG_VFNPTR_ENTRY(engine, &IVEngineServer::CreateFakeClient)))
+		return nullptr;
+
+	/* Get signature string for IVEngineServer::CreateFakeClient() */
+	sigstr = g_pGameConfSDKTools->GetKeyValue(FAKECLIENT_KEY);
+
+	if (!sigstr)
+		return nullptr;
+
+	/* Convert signature string to signature bytes */
+	siglen = UTIL_StringToSignature(sigstr, sig, sizeof(sig));
+
+	/* Check if we're on the expected function */
+	if (!UTIL_VerifySignature(vfunc, sig, siglen))
+		return nullptr;
+
+	/* Get the offset into CreateFakeClient */
+	if (!g_pGameConfSDKTools->GetOffset("sv", &offset))
+		return nullptr;
+
+	/* Finally we have the interface we were looking for */
+	return *reinterpret_cast<IServer **>(reinterpret_cast<unsigned char *>(vfunc) + offset);
 }
