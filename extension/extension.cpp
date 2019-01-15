@@ -58,10 +58,6 @@
 #include <../public/iserver.h>
 #include <../public/iclient.h>
 
-#if SOURCE_ENGINE >= SE_ORANGEBOX
-#include <itoolentity.h>
-#endif
-
 SH_DECL_HOOK1_void(IServerGameClients, ClientDisconnect, SH_NOATTRIB, false, edict_t *);
 SH_DECL_HOOK1_void(IServerGameDLL, GameFrame, SH_NOATTRIB, false, bool);
 SH_DECL_HOOK0(IServer, GetClientCount, const, false, int);
@@ -85,7 +81,6 @@ bool g_bFirstTimeCalled = true;
 bool g_bSVComputePacksDone = false;
 IServer * g_pIServer = nullptr;
 IServerGameEnts * g_pServerGameEnt = nullptr;
-IServerTools * servertools = nullptr;
 
 SendProxyManager g_SendProxyManager;
 SMEXT_LINK(&g_SendProxyManager);
@@ -263,19 +258,32 @@ DETOUR_DECL_MEMBER0(CGameClient_ShouldSendMessages, bool)
 #endif
 		return true;
 	}
-#if defined PLATFORM_x32 && SOURCE_ENGINE == SE_TF2 //I'm too lazy to do same optimization for csgo, somebody else can do this if he want
+#if defined PLATFORM_x32
 	else
 	{
-		int iTemp = 0, iToSet = g_iCurrentClientIndexInLoop - 1;
+		int iTemp, iToSet = g_iCurrentClientIndexInLoop - 1;
 		//just set the loop var to needed for us value, some optimization
+#if SOURCE_ENGINE == SE_TF2
 #ifdef _WIN32
-		__asm mov iTemp, ebx
+		__asm mov iTemp, esi
 		if (iTemp < iToSet)
-			__asm mov ebx, iToSet
+			__asm mov esi, iToSet
 #elif defined __linux__
+		//I hate AT&T syntax
 		asm("movl %%esi, %0" : "=r" (iTemp));
 		if (iTemp < iToSet)
-			asm("movl %0, %%esi" : "=r" (iToSet));
+			asm("movl %0, %%esi" : : "r" (iToSet) : "%esi");
+#endif
+#else //CSGO
+#ifdef _WIN32
+		__asm mov iTemp, esi
+		if (iTemp < iToSet)
+			__asm mov esi, iToSet
+#elif defined __linux__
+		asm("movl %%edi, %0" : "=r" (iTemp));
+		if (iTemp < iToSet)
+			asm("movl %0, %%edi" : : "r" (iToSet) : "%edi");
+#endif
 #endif
 	}
 #endif
@@ -613,9 +621,6 @@ bool SendProxyManager::SDK_OnMetamodLoad(ISmmAPI *ismm, char *error, size_t maxl
 	GET_V_IFACE_ANY(GetServerFactory, gameclients, IServerGameClients, INTERFACEVERSION_SERVERGAMECLIENTS);
 	GET_V_IFACE_ANY(GetEngineFactory, g_pCVar, ICvar, CVAR_INTERFACE_VERSION);
 	GET_V_IFACE_CURRENT(GetServerFactory, g_pServerGameEnt, IServerGameEnts, INTERFACEVERSION_SERVERGAMEENTS);
-#if SOURCE_ENGINE >= SE_ORANGEBOX
-	GET_V_IFACE_ANY(GetServerFactory, servertools, IServerTools, VSERVERTOOLS_INTERFACE_VERSION);
-#endif
 	
 	g_pGlobals = ismm->GetCGlobals();
 	

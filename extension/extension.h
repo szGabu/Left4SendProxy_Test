@@ -51,8 +51,6 @@
 		} \
 		return false; \
 	}
-
-//#define STRING( offset )	( ( offset ) ? reinterpret_cast<const char *>( offset ) : "" )
 	
 enum {
 	Prop_Int = 0,
