@@ -2,10 +2,9 @@
 #define _SENDPROXYMANAGER_INC_
 
 enum SendPropType {
-	Prop_Int = 0,
-	Prop_Float = 1,
-	Prop_String = 2,
-	//Prop_Array = 3,
+	Prop_Int,
+	Prop_Float,
+	Prop_String,
 	Prop_Vector = 4,
 	Prop_Max
 };
@@ -20,14 +19,14 @@ typeset SendProxyCallback
 
 typeset SendProxyCallbackGamerules
 {
-	function Action (const char[] cPropName, int &iValue, int iElement); //Prop_Int
-	function Action (const char[] cPropName, float &flValue, int iElement); //Prop_Float
-	function Action (const char[] cPropName, char cModifiedValue[4096], int iElement); //Prop_String
-	function Action (const char[] cPropName, float vecValues[3], int iElement); //Prop_Vector
+	function Action (const char[] cPropName, int &iValue, int iElement, int iClient); //Prop_Int
+	function Action (const char[] cPropName, float &flValue, int iElement, int iClient); //Prop_Float
+	function Action (const char[] cPropName, char cModifiedValue[4096], int iElement, int iClient); //Prop_String
+	function Action (const char[] cPropName, float vecValues[3], int iElement, int iClient); //Prop_Vector
 };
 
 typedef PropChangedCallback = function void(int iEntity, const char[] cPropName, const char[] oldValue, const char[] newValue);
-typedef GameRulesPropChangedCallback = function void(const char[] PropName, const char[] oldValue, const char[] newValue);
+typedef GameRulesPropChangedCallback = function void(const char[] cPropName, const char[] oldValue, const char[] newValue);
 
 //Returns true upon success, false upon failure
 native bool SendProxy_Hook(int entity, char[] propname, SendPropType proptype, SendProxyCallback callback);

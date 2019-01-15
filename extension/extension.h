@@ -2,7 +2,7 @@
  * vim: set ts=4 :
  * =============================================================================
  * SendVar Proxy Manager
- * Copyright (C) 2011 Afronanny.  All rights reserved.
+ * Copyright (C) 2011-2019 Afronanny & AlliedModders community.  All rights reserved.
  * =============================================================================
  *
  * This program is free software; you can redistribute it and/or modify it under
@@ -51,6 +51,8 @@
 		} \
 		return false; \
 	}
+
+//#define STRING( offset )	( ( offset ) ? reinterpret_cast<const char *>( offset ) : "" )
 	
 enum {
 	Prop_Int = 0,
@@ -127,6 +129,7 @@ public:
 	virtual void SDK_OnAllLoaded();
 	
 	virtual void OnCoreMapEnd();
+	virtual void OnCoreMapStart(edict_t *, int, int);
 	//virtual void SDK_OnPauseChange(bool paused);
 
 	//virtual bool QueryRunning(char *error, size_t maxlength);
