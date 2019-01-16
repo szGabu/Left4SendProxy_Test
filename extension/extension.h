@@ -32,16 +32,23 @@
 #ifndef _INCLUDE_SOURCEMOD_EXTENSION_PROPER_H_
 #define _INCLUDE_SOURCEMOD_EXTENSION_PROPER_H_
 
-/**
- * @file extension.h
- * @brief Sample extension code header.
+ /*
+	TODO:
+		Implement interface for prop change hooks & array props
+		Add Native_HookArrayPropGamerules & Native_UnhookArrayPropSendProxy
+		Split extension.cpp into modules: natives.cpp, interface.cpp & extension.cpp
+		Try to fix and use sv_parallel_sendsnapshot & sv_parallel_packentities if possible
+		Allow multiple hooks for prop on same enity (probably use delegate for this?)
+		Prop hooks also should removes automatically for extensions
+		More optimizations! =D
  */
+
 #include "smsdk_ext.h"
-#include "dt_send.h"
-#include "server_class.h"
 #include "convar.h"
 #include <string>
+#include <stdint.h>
 #include <ISDKHooks.h>
+#include "ISendProxy.h"
 
 #define GET_CONVAR(name) \
 	name = g_pCVar->FindVar(#name); \
@@ -51,64 +58,6 @@
 		} \
 		return false; \
 	}
-	
-enum {
-	Prop_Int = 0,
-	Prop_Float = 1, 
-	Prop_String = 2,
-	Prop_Array = 3,
-	Prop_Vector = 4,
-	Prop_Max
-};
-
-class SendPropHook
-{
-public:
-	IPluginFunction*	pCallback;
-	SendProp*			pVar;
-	edict_t*			pEnt;
-	SendVarProxyFn		pRealProxy;
-	int					objectID;
-	int					PropType;
-	int					Offset;
-	int					Element;
-};
-
-class SendPropHookGamerules
-{
-public:
-	IPluginFunction*	pCallback;
-	SendProp*			pVar;
-	SendVarProxyFn		pRealProxy;
-	int					PropType;
-	int					Offset;
-	int					Element;
-};
-
-class PropChangeHook
-{
-public:
-	IPluginFunction*	pCallback;
-	int					iLastValue;
-	float				flLastValue;
-	char				cLastValue[4096];
-	SendProp*			pVar;
-	int					PropType;
-	unsigned int		Offset;
-	int					objectID;
-};
-
-class PropChangeHookGamerules
-{
-public:
-	IPluginFunction*	pCallback;
-	int					iLastValue;
-	float				flLastValue;
-	char				cLastValue[4096];
-	SendProp*			pVar;
-	int					PropType;
-	unsigned int		Offset;
-};
 
 void GlobalProxy(const SendProp *pProp, const void *pStructBase, const void* pData, DVariant *pOut, int iElement, int objectID);
 void GlobalProxyGamerules(const SendProp *pProp, const void *pStructBase, const void* pData, DVariant *pOut, int iElement, int objectID);
@@ -121,7 +70,7 @@ class SendProxyManager :
 	public IPluginsListener,
 	public ISMEntityListener
 {
-public:
+public: //sm
 	virtual bool SDK_OnLoad(char *error, size_t maxlength, bool late);
 	virtual void SDK_OnUnload();
 	virtual void SDK_OnAllLoaded();
@@ -131,14 +80,13 @@ public:
 	//virtual void SDK_OnPauseChange(bool paused);
 
 	//virtual bool QueryRunning(char *error, size_t maxlength);
+public: //other
 	void OnPluginUnloaded(IPlugin *plugin);
 	//Returns true upon success
 	//Returns false if hook exists for that object and prop
 	//Returns false if the prop does not exist or the edict does not exist/is free
 	bool AddHookToList(SendPropHook hook);
 	bool AddHookToListGamerules(SendPropHookGamerules hook);
-	bool HookProxy(SendProp* pProp, int objectID, IPluginFunction *pCallback);
-	bool HookProxyGamerules(SendProp* pProp, IPluginFunction *pCallback);
 
 	void UnhookProxy(int i);
 	void UnhookProxyGamerules(int i);
@@ -151,6 +99,45 @@ public:
 	//virtual bool SDK_OnMetamodUnload(char *error, size_t maxlength);
 	//virtual bool SDK_OnMetamodPauseChange(bool paused, char *error, size_t maxlength);
 #endif
+};
+
+class SendProxyManagerInterfaceImpl : public ISendProxyManager
+{
+public: //SMInterface
+	virtual const char * GetInterfaceName();
+	virtual unsigned int GetInterfaceVersion();
+public: //interface impl:
+	virtual bool HookProxy(SendProp *, CBaseEntity *, PropType, CallBackType, void *);
+	virtual bool HookProxy(const char *, CBaseEntity *, PropType, CallBackType, void *);
+	virtual bool HookProxyGamerules(SendProp *, PropType, CallBackType, void *);
+	virtual bool HookProxyGamerules(const char *, PropType, CallBackType, void *);
+	virtual bool UnhookProxy(SendProp *, CBaseEntity *, CallBackType, void *);
+	virtual bool UnhookProxy(const char *, CBaseEntity *, CallBackType, void *);
+	virtual bool UnhookProxyGamerules(SendProp *, CallBackType, void *);
+	virtual bool UnhookProxyGamerules(const char *, CallBackType, void *);
+	virtual bool AddUnhookListener(IExtension *, SendProp *, CBaseEntity *, CallBackType, void *, ISendProxyUnhookListener *);
+	virtual bool AddUnhookListener(IExtension *, const char *, CBaseEntity *, CallBackType, void *, ISendProxyUnhookListener *);
+	virtual bool AddUnhookListenerGamerules(IExtension *, SendProp *, CallBackType, void *, ISendProxyUnhookListener *);
+	virtual bool AddUnhookListenerGamerules(IExtension *, const char *, CallBackType, void *, ISendProxyUnhookListener *);
+	virtual bool RemoveUnhookListener(IExtension *, SendProp *, CBaseEntity *, CallBackType, void *, ISendProxyUnhookListener *);
+	virtual bool RemoveUnhookListener(IExtension *, const char *, CBaseEntity *, CallBackType, void *, ISendProxyUnhookListener *);
+	virtual bool RemoveUnhookListenerGamerules(IExtension *, SendProp *, CallBackType, void *, ISendProxyUnhookListener *);
+	virtual bool RemoveUnhookListenerGamerules(IExtension *, const char *, CallBackType, void *, ISendProxyUnhookListener *);
+	
+	/*TODO:
+		HookProxyArray
+		HookProxyArrayGamerules
+		UnhookProxyArray
+		UnhookProxyArrayGamerules
+		AddUnhookListenerArray
+		RemoveUnhookListenerArray
+		AddUnhookListenerArrayGamerules
+		RemoveUnhookListenerArrayGamerules
+		IsProxyHooked
+		IsGamerulesProxyHooked
+		IsArrayProxyHooked
+		IsArrayGamerulesProxyHooked
+	*/
 };
 
 #endif // _INCLUDE_SOURCEMOD_EXTENSION_PROPER_H_
