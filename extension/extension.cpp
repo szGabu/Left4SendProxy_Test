@@ -46,8 +46,9 @@
 
 #include "CDetour/detours.h"
 #include "extension.h"
+#include "interface.h"
+#include "natives.h"
 
-#include <ISDKTools.h>
 //path: hl2sdk-<your sdk here>/public/<include>.h, "../public/" included to prevent compile errors due wrong directory scanning by compiler on my computer, and I'm too lazy to find where I can change that =D
 #include <../public/eiface.h>
 #include <../public/iserver.h>
@@ -56,7 +57,6 @@
 SH_DECL_HOOK1_void(IServerGameClients, ClientDisconnect, SH_NOATTRIB, false, edict_t *);
 SH_DECL_HOOK1_void(IServerGameDLL, GameFrame, SH_NOATTRIB, false, bool);
 SH_DECL_HOOK0(IServer, GetClientCount, const, false, int);
-SH_DECL_HOOK0_void(IExtensionInterface, OnExtensionUnload, SH_NOATTRIB, false);
 
 DECL_DETOUR(CGameServer_SendClientMessages);
 DECL_DETOUR(CGameClient_ShouldSendMessages);
@@ -71,6 +71,7 @@ class CGlobalEntityList;
 //we will use integer to store pointer lol
 CGameClient * g_pCurrentGameClientPtr = 0;
 int g_iCurrentClientIndexInLoop = -1; //used for optimization
+int g_iEdictCount;
 bool g_bCurrentGameClientCallFwd = false;
 bool g_bCallingForNullClients = false;
 bool g_bFirstTimeCalled = true;
@@ -105,41 +106,9 @@ bool g_bShouldChangeGameRulesState = false;
 
 CGlobalVars * g_pGlobals = nullptr;
 
-static cell_t Native_Hook(IPluginContext * pContext, const cell_t  * params);
-static cell_t Native_HookGameRules(IPluginContext * pContext, const cell_t * params);
-static cell_t Native_Unhook(IPluginContext * pContext, const cell_t * params);
-static cell_t Native_UnhookGameRules(IPluginContext * pContext, const cell_t * params);
-static cell_t Native_IsHooked(IPluginContext * pContext, const cell_t * params);
-static cell_t Native_IsHookedGameRules(IPluginContext * pContext, const cell_t * params);
-static cell_t Native_HookArrayProp(IPluginContext * pContext, const cell_t * params);
-static cell_t Native_UnhookArrayProp(IPluginContext * pContext, const cell_t * params);
-static cell_t Native_HookPropChange(IPluginContext * pContext, const cell_t * params);
-static cell_t Native_HookPropChangeGameRules(IPluginContext * pContext, const cell_t * params);
-static cell_t Native_UnhookPropChange(IPluginContext * pContext, const cell_t * params);
-static cell_t Native_UnhookPropChangeGameRules(IPluginContext * pContext, const cell_t * params);
-
-static CBaseEntity * FindEntityByServerClassname(int, const char *, int iEdictCount = 0);
-static bool IsPropValid(SendProp *, PropType);
-static void CallListenersForHookID(int iID);
-static void CallListenersForHookIDGamerules(int iID);
+static CBaseEntity * FindEntityByServerClassname(int, const char *);
 
 const char * g_szGameRulesProxy;
-
-const sp_nativeinfo_t g_MyNatives[] = {
-	{"SendProxy_Hook", Native_Hook},
-	{"SendProxy_HookGameRules", Native_HookGameRules},
-	{"SendProxy_HookArrayProp", Native_HookArrayProp},
-	{"SendProxy_UnhookArrayProp", Native_UnhookArrayProp},
-	{"SendProxy_Unhook", Native_Unhook},
-	{"SendProxy_UnhookGameRules", Native_UnhookGameRules},
-	{"SendProxy_IsHooked", Native_IsHooked},
-	{"SendProxy_IsHookedGameRules", Native_IsHookedGameRules},
-	{"SendProxy_HookPropChange", Native_HookPropChange},
-	{"SendProxy_HookPropChangeGameRules", Native_HookPropChangeGameRules},
-	{"SendProxy_UnhookPropChange", Native_UnhookPropChange},
-	{"SendProxy_UnhookPropChangeGameRules", Native_UnhookPropChangeGameRules},
-	{NULL,	NULL},
-};
 
 //detours
 
@@ -545,13 +514,11 @@ bool SendProxyManager::SDK_OnLoad(char *error, size_t maxlength, bool late)
 	if (late) //if we loaded late, we need manually to call that
 		OnCoreMapStart(nullptr, 0, 0);
 	
-	
-	g_pMyInterface = new SendProxyManagerInterfaceImpl();
-	sharesys->AddInterface(myself, g_pMyInterface);
-	
 	sharesys->AddDependency(myself, "sdktools.ext", true, true);
 	sharesys->AddDependency(myself, "sdkhooks.ext", true, true);
 	
+	g_pMyInterface = new SendProxyManagerInterfaceImpl();
+	sharesys->AddInterface(myself, g_pMyInterface);
 	sharesys->RegisterLibrary(myself, "sendproxy");
 	plsys->AddPluginsListener(&g_SendProxyManager);
 
@@ -611,7 +578,8 @@ void SendProxyManager::OnCoreMapEnd()
 
 void SendProxyManager::OnCoreMapStart(edict_t * pEdictList, int edictCount, int clientMax)
 {
-	CBaseEntity * pGameRulesProxyEnt = FindEntityByServerClassname(0, g_szGameRulesProxy, edictCount);
+	g_iEdictCount = edictCount ? edictCount : g_pGlobals->maxEntities * 2;
+	CBaseEntity * pGameRulesProxyEnt = FindEntityByServerClassname(0, g_szGameRulesProxy);
 	if (!pGameRulesProxyEnt)
 	{
 		smutils->LogError(myself, "Unable to get gamerules proxy ent (1)!");
@@ -1071,25 +1039,46 @@ bool CallVectorGamerules(SendPropHookGamerules hook, Vector &vec)
 	
 	AUTO_LOCK_FM(g_WorkMutex);
 
-	IPluginFunction *callback = (IPluginFunction *)hook.pCallback;
-
-	cell_t vector[3];
-	vector[0] = sp_ftoc(vec.x);
-	vector[1] = sp_ftoc(vec.y);
-	vector[2] = sp_ftoc(vec.z);
-
-	cell_t result = Pl_Continue;
-	callback->PushString(hook.pVar->GetName());
-	callback->PushArray(vector, 3, SM_PARAM_COPYBACK);
-	callback->PushCell(hook.Element);
-	callback->PushCell(g_iCurrentClientIndexInLoop + 1);
-	callback->Execute(&result);
-	if (result == Pl_Changed)
+	switch (hook.iCallbackType)
 	{
-		vec.x = sp_ctof(vector[0]);
-		vec.y = sp_ctof(vector[1]);
-		vec.z = sp_ctof(vector[2]);
-		return true;
+		case CallBackType::Callback_PluginFunction:
+		{
+			IPluginFunction *callback = (IPluginFunction *)hook.pCallback;
+
+			cell_t vector[3];
+			vector[0] = sp_ftoc(vec.x);
+			vector[1] = sp_ftoc(vec.y);
+			vector[2] = sp_ftoc(vec.z);
+
+			cell_t result = Pl_Continue;
+			callback->PushString(hook.pVar->GetName());
+			callback->PushArray(vector, 3, SM_PARAM_COPYBACK);
+			callback->PushCell(hook.Element);
+			callback->PushCell(g_iCurrentClientIndexInLoop + 1);
+			callback->Execute(&result);
+			if (result == Pl_Changed)
+			{
+				vec.x = sp_ctof(vector[0]);
+				vec.y = sp_ctof(vector[1]);
+				vec.z = sp_ctof(vector[2]);
+				return true;
+			}
+			break;
+		}
+		case CallBackType::Callback_CPPFunction:
+		{
+			ISendProxyCallbacks * pCallbacks = (ISendProxyCallbacks *)hook.pCallback;
+			Vector vNewVec(vec.x, vec.y, vec.z);
+			bool bChange = pCallbacks->OnGamerulesPropProxyFunctionCalls(hook.pVar, (CBasePlayer *)gamehelpers->ReferenceToEntity(g_iCurrentClientIndexInLoop + 1), (void *)&vNewVec, hook.PropType, hook.Element);
+			if (bChange)
+			{
+				vec.x = vNewVec.x;
+				vec.y = vNewVec.y;
+				vec.z = vNewVec.z;
+				return true;
+			}
+			break;
+		}
 	}
 	return false;
 }
@@ -1264,449 +1253,15 @@ void GlobalProxyGamerules(const SendProp *pProp, const void *pStructBase, const 
 //PropChanged(entity, const String:propname[], const String:oldValue[], const String:newValue[])
 //SendProxy_HookPropChange(entity, const String:name[], PropChanged:callback)
 
-//Natives
-
-static cell_t Native_UnhookPropChange(IPluginContext * pContext, const cell_t * params)
-{
-	if (params[1] < 0 || params[1] >= 2048)
-	{
-		return pContext->ThrowNativeError("Invalid Edict Index %d", params[1]);
-	}
-	int entity = params[1];
-	char* name;
-	edict_t * pEnt = gamehelpers->EdictOfIndex(entity);
-	pContext->LocalToString(params[2], &name);
-	IPluginFunction *callback = pContext->GetFunctionById(params[3]);
-	sm_sendprop_info_t info;
-	ServerClass *sc = pEnt->GetNetworkable()->GetServerClass();
-	gamehelpers->FindSendPropInfo(sc->GetName(), name, &info);
-	
-	for (int i = 0; i < g_ChangeHooks.Count(); i++)
-	{
-		if (g_ChangeHooks[i].pCallback == (void *)callback && g_ChangeHooks[i].objectID == entity && g_ChangeHooks[i].pVar == info.prop)
-			g_ChangeHooks.Remove(i--);
-	}
-	return 1;
-}
-
-static cell_t Native_UnhookPropChangeGameRules(IPluginContext * pContext, const cell_t * params)
-{
-	char* name;
-	pContext->LocalToString(params[1], &name);
-	IPluginFunction *callback = pContext->GetFunctionById(params[2]);
-	sm_sendprop_info_t info;
-	gamehelpers->FindSendPropInfo(g_szGameRulesProxy, name, &info);
-	
-	for (int i = 0; i < g_ChangeHooksGamerules.Count(); i++)
-	{
-		if (g_ChangeHooksGamerules[i].pCallback == (void *)callback && g_ChangeHooksGamerules[i].pVar == info.prop)
-			g_ChangeHooksGamerules.Remove(i--);
-	}
-	return 1;
-}
-	
-static cell_t Native_HookPropChange(IPluginContext * pContext, const cell_t * params)
-{
-	if (params[1] < 0 || params[1] >= 2048)
-	{
-		return pContext->ThrowNativeError("Invalid Edict Index %d", params[1]);
-	}
-	int entity = params[1];
-	char* name;
-	edict_t * pEnt = gamehelpers->EdictOfIndex(entity);
-	pContext->LocalToString(params[2], &name);
-	IPluginFunction *callback = pContext->GetFunctionById(params[3]);
-	SendProp *pProp = nullptr;
-	PropChangeHook hook;
-	sm_sendprop_info_t info;
-	ServerClass *sc = pEnt->GetNetworkable()->GetServerClass();
-	gamehelpers->FindSendPropInfo(sc->GetName(), name, &info);
-
-	pProp = info.prop;
-	int offset = info.actual_offset;
-	SendPropType type = pProp->GetType();
-	CBaseEntity* pEntity = gameents->EdictToBaseEntity(pEnt);
-
-	switch (type)
-	{
-	case DPT_Int: hook.PropType = PropType::Prop_Int; hook.iLastValue = *(int*)((unsigned char*)pEntity + offset); break;
-	case DPT_Float: hook.PropType = PropType::Prop_Float; hook.flLastValue = *(float*)((unsigned char*)pEntity + offset); break;
-	case DPT_String: hook.PropType = PropType::Prop_String; strncpy(hook.cLastValue, (const char*)((unsigned char*)pEntity + offset), sizeof(hook.cLastValue)); break;
-	default: return pContext->ThrowNativeError("Prop type %d is not yet supported", type);
-	}
-
-	hook.objectID = entity;
-	hook.Offset = offset;
-	hook.pVar = pProp;
-	hook.pCallback = callback;
-
-	g_ChangeHooks.AddToTail(hook);
-	return 1;
-}
-
-static cell_t Native_HookPropChangeGameRules(IPluginContext * pContext, const cell_t * params)
-{
-	char* name;
-	pContext->LocalToString(params[1], &name);
-	IPluginFunction *callback = pContext->GetFunctionById(params[2]);
-	SendProp *pProp = nullptr;
-	PropChangeHookGamerules hook;
-	sm_sendprop_info_t info;
-	gamehelpers->FindSendPropInfo(g_szGameRulesProxy, name, &info);
-
-	pProp = info.prop;
-	int offset = info.actual_offset;
-	SendPropType type = pProp->GetType();
-
-	static void *pGamerules = nullptr;
-	if (!pGamerules)
-	{
-		pGamerules = g_pSDKTools->GetGameRules();
-		if (!pGamerules)
-		{
-			g_pSM->LogError(myself, "CRITICAL ERROR: Could not get gamerules pointer!");
-			return 0;
-		}
-	}
-
-	switch (type)
-	{
-	case DPT_Int: hook.PropType = PropType::Prop_Int; hook.iLastValue = *(int*)((unsigned char*)pGamerules + offset); break;
-	case DPT_Float: hook.PropType = PropType::Prop_Float; hook.flLastValue = *(float*)((unsigned char*)pGamerules + offset); break;
-	case DPT_String: hook.PropType = PropType::Prop_String; strncpy(hook.cLastValue, (const char*)((unsigned char*)pGamerules + offset), sizeof(hook.cLastValue)); break;
-	default: return pContext->ThrowNativeError("Prop type %d is not yet supported", type);
-	}
-
-	hook.Offset = offset;
-	hook.pVar = pProp;
-	hook.pCallback = callback;
-
-	g_ChangeHooksGamerules.AddToTail(hook);
-	return 1;
-}
-
-static cell_t Native_Hook(IPluginContext* pContext, const cell_t* params)
-{
-	if (params[1] < 0 || params[1] >= 2048)
-	{
-		return pContext->ThrowNativeError("Invalid Edict Index %d", params[1]);
-	}
-	int entity = params[1];
-	char* name;
-	pContext->LocalToString(params[2], &name);
-	edict_t * pEnt = gamehelpers->EdictOfIndex(entity);
-	PropType propType = static_cast<PropType>(params[3]);
-	IPluginFunction *callback = pContext->GetFunctionById(params[4]);
-	SendProp *pProp = nullptr;
-	ServerClass *sc = pEnt->GetNetworkable()->GetServerClass();
-	sm_sendprop_info_t info;
-	
-	if (!sc)
-	{
-		pContext->ThrowNativeError("Cannot find ServerClass for entity %d", params[1]);
-		return 0;
-	}
-
-	gamehelpers->FindSendPropInfo(sc->GetName(), name, &info);
-	pProp = info.prop;
-	if (!pProp)
-	{
-		pContext->ThrowNativeError("Could not find prop %s", name);
-		return 0;
-	}
-	if (!IsPropValid(pProp, propType))
-		switch (propType)
-		{
-			case PropType::Prop_Int: 
-				return pContext->ThrowNativeError("Prop %s is not an int!", pProp->GetName());
-			case PropType::Prop_Float:
-				return pContext->ThrowNativeError("Prop %s is not a float!", pProp->GetName());
-			case PropType::Prop_String:
-				return pContext->ThrowNativeError("Prop %s is not a string!", pProp->GetName());
-			case PropType::Prop_Vector:
-				return pContext->ThrowNativeError("Prop %s is not a vector!", pProp->GetName());
-			default:
-				return pContext->ThrowNativeError("Unsupported prop type %d", propType);
-		}
-	
-	
-	SendPropHook hook;
-	hook.objectID = entity;
-	hook.pCallback = (void *)callback;
-	hook.iCallbackType = CallBackType::Callback_PluginFunction;
-	hook.pEnt = pEnt;
-	bool bHookedAlready = false;
-	for (int i = 0; i < g_Hooks.Count(); i++)
-	{
-		if (g_Hooks[i].pVar == pProp)
-		{
-			hook.pRealProxy = g_Hooks[i].pRealProxy;
-			bHookedAlready = true;
-			break;
-		}
-	}
-	if (!bHookedAlready)
-		hook.pRealProxy = pProp->GetProxyFn();
-	hook.PropType = propType;
-	hook.pVar = pProp;
-	hook.Offset = info.actual_offset;
-	
-	//if this prop has been hooked already, don't set the proxy again
-	if (bHookedAlready)
-	{
-		if (g_SendProxyManager.AddHookToList(hook))
-			return 1;
-		return 0;
-	}
-	if (g_SendProxyManager.AddHookToList(hook))
-	{
-		pProp->SetProxyFn(GlobalProxy);
-		return 1;
-	}
-	return 0;
-}
-
-static cell_t Native_HookGameRules(IPluginContext * pContext, const cell_t * params)
-{
-	char* name;
-	pContext->LocalToString(params[1], &name);
-	PropType propType = static_cast<PropType>(params[2]);
-	IPluginFunction *callback = pContext->GetFunctionById(params[3]);
-	SendProp *pProp = nullptr;
-	sm_sendprop_info_t info;
-
-	gamehelpers->FindSendPropInfo(g_szGameRulesProxy, name, &info);
-	pProp = info.prop;
-	if (!pProp)
-	{
-		pContext->ThrowNativeError("Could not find prop %s", name);
-		return 0;
-	}
-	if (!IsPropValid(pProp, propType))
-		switch (propType)
-		{
-			case PropType::Prop_Int: 
-				return pContext->ThrowNativeError("Prop %s is not an int!", pProp->GetName());
-			case PropType::Prop_Float:
-				return pContext->ThrowNativeError("Prop %s is not a float!", pProp->GetName());
-			case PropType::Prop_String:
-				return pContext->ThrowNativeError("Prop %s is not a string!", pProp->GetName());
-			case PropType::Prop_Vector:
-				return pContext->ThrowNativeError("Prop %s is not a vector!", pProp->GetName());
-			default:
-				return pContext->ThrowNativeError("Unsupported prop type %d", propType);
-		}
-	SendPropHookGamerules hook;
-	hook.pCallback = (void *)callback;
-	hook.iCallbackType = CallBackType::Callback_PluginFunction;
-	bool bHookedAlready = false;
-	for (int i = 0; i < g_HooksGamerules.Count(); i++)
-	{
-		if (g_HooksGamerules[i].pVar == pProp)
-		{
-			hook.pRealProxy = g_HooksGamerules[i].pRealProxy;
-			bHookedAlready = true;
-			break;
-		}
-	}
-	if (!bHookedAlready)
-		hook.pRealProxy = pProp->GetProxyFn();
-	hook.PropType = propType;
-	hook.pVar = pProp;
-	hook.Offset = info.actual_offset;
-	
-	//if this prop has been hooked already, don't set the proxy again
-	if (bHookedAlready)
-	{
-		if (g_SendProxyManager.AddHookToListGamerules(hook))
-			return 1;
-		return 0;
-	}
-	if (g_SendProxyManager.AddHookToListGamerules(hook))
-	{
-		pProp->SetProxyFn(GlobalProxyGamerules);
-		return 1;
-	}
-	return 0;
-}
-
-//native SendProxy_HookArrayProp(entity, const String:name[], element, SendPropType:type, SendProxyCallback:callback);
-
-static cell_t Native_HookArrayProp(IPluginContext* pContext, const cell_t* params)
-{
-	if (params[1] < 0 || params[1] >= 2048)
-	{
-		return pContext->ThrowNativeError("Invalid Edict Index %d", params[1]);
-	}
-	int entity = params[1];
-	char *propName;
-	pContext->LocalToString(params[2], &propName);
-	int element = params[3];
-	PropType propType = static_cast<PropType>(params[4]);
-	IPluginFunction *callback = pContext->GetFunctionById(params[5]);
-	
-	edict_t * pEnt = gamehelpers->EdictOfIndex(entity);
-	ServerClass *sc = pEnt->GetNetworkable()->GetServerClass();
-	sm_sendprop_info_t info;
-	gamehelpers->FindSendPropInfo(sc->GetName(), propName, &info);
-	if (!info.prop)
-	{
-		return pContext->ThrowNativeError("Could not find prop %s", propName);
-	}
-	SendTable *st = info.prop->GetDataTable();
-	if (!st)
-	{
-		return pContext->ThrowNativeError("Prop %s does not contain any elements", propName);
-	}
-
-	SendProp *pProp = st->GetProp(element);
-	if (!pProp)
-	{
-		return pContext->ThrowNativeError("Could not find element %d in %s", element, info.prop->GetName());
-	}
-	
-	if (!IsPropValid(pProp, propType))
-		switch (propType)
-		{
-			case PropType::Prop_Int: 
-				return pContext->ThrowNativeError("Prop %s is not an int!", pProp->GetName());
-			case PropType::Prop_Float:
-				return pContext->ThrowNativeError("Prop %s is not a float!", pProp->GetName());
-			case PropType::Prop_String:
-				return pContext->ThrowNativeError("Prop %s is not a string!", pProp->GetName());
-			case PropType::Prop_Vector:
-				return pContext->ThrowNativeError("Prop %s is not a vector!", pProp->GetName());
-			default:
-				return pContext->ThrowNativeError("Unsupported prop type %d", propType);
-		}
-	
-	SendPropHook hook;
-	hook.objectID = entity;
-	hook.pCallback = (void *)callback;
-	hook.iCallbackType = CallBackType::Callback_PluginFunction;
-	hook.pEnt = pEnt;
-	hook.Element = element;
-	bool bHookedAlready = false;
-	for (int i = 0; i < g_Hooks.Count(); i++)
-	{
-		if (g_Hooks[i].pVar == pProp)
-		{
-			hook.pRealProxy = g_Hooks[i].pRealProxy;
-			bHookedAlready = true;
-			break;
-		}
-	}
-	if (!bHookedAlready)
-		hook.pRealProxy = pProp->GetProxyFn();
-	hook.PropType = propType;
-	hook.pVar = pProp;
-	
-	if (bHookedAlready)
-	{
-		if (g_SendProxyManager.AddHookToList(hook))
-			return 1;
-		return 0;
-	}
-	if (g_SendProxyManager.AddHookToList(hook))
-	{
-		pProp->SetProxyFn(GlobalProxy);
-		return 1;
-	}
-	return 0;
-}
-
-//native bool SendProxy_UnhookArrayProp(int entity, const char[] name, int element, SendPropType type, SendProxyCallback callback);
-
-static cell_t Native_UnhookArrayProp(IPluginContext* pContext, const cell_t* params)
-{
-	if (params[1] < 0 || params[1] >= 2048)
-	{
-		return pContext->ThrowNativeError("Invalid Edict Index %d", params[1]);
-	}
-	int entity = params[1];
-	char *propName;
-	pContext->LocalToString(params[2], &propName);
-	int element = params[3];
-	PropType propType = static_cast<PropType>(params[4]);
-	IPluginFunction *callback = pContext->GetFunctionById(params[5]);
-	for (int i = 0; i < g_Hooks.Count(); i++)
-	{
-		if (g_Hooks[i].Element == element && g_Hooks[i].PropType == propType && g_Hooks[i].pCallback == (void *)callback && !strcmp(g_Hooks[i].pVar->GetName(), propName) && g_Hooks[i].objectID == entity)
-		{
-			g_SendProxyManager.UnhookProxy(i);
-			return 1;
-		}
-	}
-	return 0;
-}
-
-static cell_t Native_Unhook(IPluginContext* pContext, const cell_t* params)
-{
-	char *propName;
-	pContext->LocalToString(params[2], &propName);
-	IPluginFunction *pFunction = pContext->GetFunctionById(params[3]);
-	for (int i = 0; i < g_Hooks.Count(); i++)
-	{
-		if (params[1] == g_Hooks[i].objectID && strcmp(g_Hooks[i].pVar->GetName(), propName) == 0 && (void *)pFunction == g_Hooks[i].pCallback)
-		{
-			g_SendProxyManager.UnhookProxy(i);
-			return 1;
-		}
-	}
-	return 0;
-}
-
-static cell_t Native_UnhookGameRules(IPluginContext* pContext, const cell_t* params)
-{
-	char *propName;
-	pContext->LocalToString(params[1], &propName);
-	IPluginFunction *pFunction = pContext->GetFunctionById(params[2]);
-	for (int i = 0; i < g_HooksGamerules.Count(); i++)
-	{
-		if (strcmp(g_HooksGamerules[i].pVar->GetName(), propName) == 0 && (void *)pFunction == g_HooksGamerules[i].pCallback)
-		{
-			g_SendProxyManager.UnhookProxyGamerules(i);
-			return 1;
-		}
-	}
-	return 0;
-}
-
-static cell_t Native_IsHooked(IPluginContext* pContext, const cell_t* params)
-{
-	int objectID = params[1];
-	char *propName;
-	pContext->LocalToString(params[2], &propName);
-
-	for (int i = 0; i < g_Hooks.Count(); i++)
-	{
-		if (g_Hooks[i].objectID == objectID && strcmp(propName, g_Hooks[i].pVar->GetName()) == 0)
-			return 1;
-	}
-	return 0;
-}
-
-static cell_t Native_IsHookedGameRules(IPluginContext* pContext, const cell_t* params)
-{
-	char *propName;
-	pContext->LocalToString(params[1], &propName);
-
-	for (int i = 0; i < g_HooksGamerules.Count(); i++)
-	{
-		if (strcmp(propName, g_HooksGamerules[i].pVar->GetName()) == 0)
-			return 1;
-	}
-	return 0;
-}
-
 //help
 
-CBaseEntity * FindEntityByServerClassname(int iStart, const char * pServerClassName, int iEdictCount)
+CBaseEntity * FindEntityByServerClassname(int iStart, const char * pServerClassName)
 {
-	int MAXENTS = iEdictCount ? iEdictCount : g_pGlobals->maxEntities * 2;
-	if (iStart >= MAXENTS)
+	if (!g_iEdictCount)
+		g_iEdictCount = g_pGlobals->maxEntities * 2;
+	if (iStart >= g_iEdictCount)
 		return nullptr;
-	for (int i = iStart; i < MAXENTS; i++)
+	for (int i = iStart; i < g_iEdictCount; i++)
 	{
 		CBaseEntity * pEnt = gamehelpers->ReferenceToEntity(i);
 		if (!pEnt)
@@ -1748,394 +1303,5 @@ bool IsPropValid(SendProp * pProp, PropType iType)
 			return true;
 		}
 	}
-	return false;
-}
-
-void Hook_OnExtensionUnload()
-{
-	IExtensionInterface * pExtAPI = META_IFACEPTR(IExtensionInterface);
-	int iHookID = 0;
-	for (int i = 0; i < g_Hooks.Count(); i++)
-		if (g_Hooks[i].vListeners.Count())
-			for (int j = 0; j < g_Hooks[i].vListeners.Count(); j++)
-			{
-				ListenerCallbackInfo info = g_Hooks[i].vListeners[j];
-				if (info.m_pExtAPI == pExtAPI && info.m_iUnloadHook)
-				{
-					if (!iHookID)
-						iHookID = g_Hooks[i].vListeners[j].m_iUnloadHook;
-					g_Hooks[i].vListeners.Remove(j);
-				}
-			}
-	for (int i = 0; i < g_HooksGamerules.Count(); i++)
-		if (g_HooksGamerules[i].vListeners.Count())
-			for (int j = 0; j < g_HooksGamerules[i].vListeners.Count(); j++)
-			{
-				ListenerCallbackInfo info = g_HooksGamerules[i].vListeners[j];
-				if (info.m_pExtAPI == pExtAPI && info.m_iUnloadHook)
-				{
-					if (!iHookID)
-						iHookID = g_HooksGamerules[i].vListeners[j].m_iUnloadHook;
-					g_HooksGamerules[i].vListeners.Remove(j);
-				}
-			}
-	if (iHookID)
-		SH_REMOVE_HOOK_ID(iHookID);
-}
-
-
-void HookExtensionUnload(IExtension * pExt, ListenerCallbackInfo * pInfoCallback)
-{
-	if (!pExt)
-		return;
-	
-	bool bHookedAlready = false;
-	int iUnloadHook = 0;
-	for (int i = 0; i < g_Hooks.Count(); i++)
-		if (g_Hooks[i].vListeners.Count())
-			for (int j = 0; j < g_Hooks[i].vListeners.Count(); j++)
-			{
-				ListenerCallbackInfo info = g_Hooks[i].vListeners[j];
-				if (info.m_pExt == pExt && info.m_iUnloadHook)
-				{
-					iUnloadHook = info.m_iUnloadHook;
-					bHookedAlready = true;
-					break;
-				}
-			}
-	if (!bHookedAlready)
-		for (int i = 0; i < g_HooksGamerules.Count(); i++)
-			if (g_HooksGamerules[i].vListeners.Count())
-				for (int j = 0; j < g_HooksGamerules[i].vListeners.Count(); j++)
-				{
-					ListenerCallbackInfo info = g_HooksGamerules[i].vListeners[j];
-					if (info.m_pExt == pExt && info.m_iUnloadHook)
-					{
-						iUnloadHook = info.m_iUnloadHook;
-						bHookedAlready = true;
-						break;
-					}
-				}
-	IExtensionInterface * pAPI = pExt->GetAPI();
-	pInfoCallback->m_pExtAPI = pAPI;
-	if (!bHookedAlready)
-	{
-		int iHook = SH_ADD_HOOK(IExtensionInterface, OnExtensionUnload, pAPI, SH_STATIC(Hook_OnExtensionUnload), false);
-		pInfoCallback->m_iUnloadHook = iHook;
-	}
-	else
-		pInfoCallback->m_iUnloadHook = iUnloadHook;
-}
-
-void UnhookExtensionUnload(IExtension * pExt, ListenerCallbackInfo * pInfoCallback)
-{
-	if (!pExt)
-		return;
-	
-	bool bHaveHooks = false;
-	for (int i = 0; i < g_Hooks.Count(); i++)
-		if (g_Hooks[i].vListeners.Count())
-			for (int j = 0; j < g_Hooks[i].vListeners.Count(); j++)
-			{
-				ListenerCallbackInfo info = g_Hooks[i].vListeners[j];
-				if (info.m_pExt == pExt && info.m_iUnloadHook)
-				{
-					bHaveHooks = true;
-					break;
-				}
-			}
-	if (!bHaveHooks)
-		for (int i = 0; i < g_HooksGamerules.Count(); i++)
-			if (g_HooksGamerules[i].vListeners.Count())
-				for (int j = 0; j < g_HooksGamerules[i].vListeners.Count(); j++)
-				{
-					ListenerCallbackInfo info = g_HooksGamerules[i].vListeners[j];
-					if (info.m_pExt == pExt && info.m_iUnloadHook)
-					{
-						bHaveHooks = true;
-						break;
-					}
-				}
-	
-	if (!bHaveHooks) //so, if there are active hooks, we shouldn't remove hook!
-		SH_REMOVE_HOOK_ID(pInfoCallback->m_iUnloadHook);
-}
-
-void CallListenersForHookID(int iHookID)
-{
-	SendPropHook Info = g_Hooks[iHookID];
-	for (int i = 0; i < Info.vListeners.Count(); i++)
-	{
-		ListenerCallbackInfo sInfo = Info.vListeners[i];
-		sInfo.m_pCallBack->OnEntityPropHookRemoved(gameents->EdictToBaseEntity(Info.pEnt), Info.pVar, Info.PropType, Info.iCallbackType, Info.pCallback);
-	}
-}
-
-void CallListenersForHookIDGamerules(int iHookID)
-{
-	SendPropHookGamerules Info = g_HooksGamerules[iHookID];
-	for (int i = 0; i < Info.vListeners.Count(); i++)
-	{
-		ListenerCallbackInfo sInfo = Info.vListeners[i];
-		sInfo.m_pCallBack->OnGamerulesPropHookRemoved(Info.pVar, Info.PropType, Info.iCallbackType, Info.pCallback);
-	}
-}
-
-//interface
-
-const char * SendProxyManagerInterfaceImpl::GetInterfaceName() { return SMINTERFACE_SENDPROXY_NAME; }
-unsigned int SendProxyManagerInterfaceImpl::GetInterfaceVersion() { return SMINTERFACE_SENDPROXY_VERSION; }
-
-bool SendProxyManagerInterfaceImpl::HookProxy(SendProp * pProp, CBaseEntity * pEntity, PropType iType, CallBackType iCallbackType, void * pCallback)
-{
-	if (!pEntity)
-		return false;
-	
-	edict_t * pEdict = gameents->BaseEntityToEdict(pEntity);
-	if (!pEdict || pEdict->IsFree())
-		return false;
-
-	if (!IsPropValid(pProp, iType))
-		return false;
-	
-	SendPropHook hook;
-	hook.objectID = gamehelpers->IndexOfEdict(pEdict);
-	hook.pCallback = pCallback;
-	hook.iCallbackType = iCallbackType;
-	hook.PropType = iType;
-	hook.pEnt = pEdict;
-	hook.pVar = pProp;
-	bool bHookedAlready = false;
-	for (int i = 0; i < g_Hooks.Count(); i++)
-	{
-		if (g_Hooks[i].pVar == pProp)
-		{
-			hook.pRealProxy = g_Hooks[i].pRealProxy;
-			bHookedAlready = true;
-			break;
-		}
-	}
-	if (!bHookedAlready)
-		hook.pRealProxy = pProp->GetProxyFn();
-	if (g_SendProxyManager.AddHookToList(hook))
-	{
-		if (!bHookedAlready)
-			pProp->SetProxyFn(GlobalProxy);
-	}
-	else
-		return false;
-	return true;
-}
-
-bool SendProxyManagerInterfaceImpl::HookProxy(const char * pProp, CBaseEntity * pEntity, PropType iType, CallBackType iCallbackType, void * pCallback)
-{
-	if (!pProp || !*pProp)
-		return false;
-	if (!pEntity)
-		return false;
-	ServerClass * sc = ((IServerUnknown *)pEntity)->GetNetworkable()->GetServerClass();
-	if (!sc)
-		return false; //we don't use exceptions, bad extensions may do not handle this and server will crashed, just return false
-	sm_sendprop_info_t info;
-	gamehelpers->FindSendPropInfo(sc->GetName(), pProp, &info);
-	SendProp * pSendProp = info.prop;
-	if (pSendProp)
-		return HookProxy(pSendProp, pEntity, iType, iCallbackType, pCallback);
-	return false;
-}
-
-bool SendProxyManagerInterfaceImpl::HookProxyGamerules(SendProp * pProp, PropType iType, CallBackType iCallbackType, void * pCallback)
-{
-	if (!IsPropValid(pProp, iType))
-		return false;
-	
-	SendPropHookGamerules hook;
-	hook.pCallback = pCallback;
-	hook.iCallbackType = iCallbackType;
-	bool bHookedAlready = false;
-	for (int i = 0; i < g_HooksGamerules.Count(); i++)
-	{
-		if (g_HooksGamerules[i].pVar == pProp)
-		{
-			hook.pRealProxy = g_HooksGamerules[i].pRealProxy;
-			bHookedAlready = true;
-			break;
-		}
-	}
-	if (!bHookedAlready)
-		hook.pRealProxy = pProp->GetProxyFn();
-	hook.PropType = iType;
-	hook.pVar = pProp;
-	sm_sendprop_info_t info;
-	gamehelpers->FindSendPropInfo(g_szGameRulesProxy, pProp->GetName(), &info);
-	hook.Offset = info.actual_offset;
-	
-	//if this prop has been hooked already, don't set the proxy again
-	if (bHookedAlready)
-	{
-		if (g_SendProxyManager.AddHookToListGamerules(hook))
-			return true;
-		return false;
-	}
-	if (g_SendProxyManager.AddHookToListGamerules(hook))
-	{
-		pProp->SetProxyFn(GlobalProxyGamerules);
-		return true;
-	}
-	return false;
-}
-
-bool SendProxyManagerInterfaceImpl::HookProxyGamerules(const char * pProp, PropType iType, CallBackType iCallbackType, void * pCallback)
-{
-	if (!pProp || !*pProp)
-		return false;
-	sm_sendprop_info_t info;
-	gamehelpers->FindSendPropInfo(g_szGameRulesProxy, pProp, &info);
-	SendProp * pSendProp = info.prop;
-	if (pSendProp)
-		return HookProxyGamerules(pSendProp, iType, iCallbackType, pCallback);
-	return false;
-}
-
-bool SendProxyManagerInterfaceImpl::UnhookProxy(SendProp * pProp, CBaseEntity * pEntity, CallBackType iCallbackType, void * pCallback)
-{
-	const char * pPropName = pProp->GetName();
-	return UnhookProxy(pPropName, pEntity, iCallbackType, pCallback);
-}
-
-bool SendProxyManagerInterfaceImpl::UnhookProxy(const char * pProp, CBaseEntity * pEntity, CallBackType iCallbackType, void * pCallback)
-{
-	if (!pProp || !*pProp)
-		return false;
-	edict_t * pEdict = gameents->BaseEntityToEdict(pEntity);
-	for (int i = 0; i < g_Hooks.Count(); i++)
-		if (pEdict == g_Hooks[i].pEnt && g_Hooks[i].iCallbackType == iCallbackType && !strcmp(g_Hooks[i].pVar->GetName(), pProp) && pCallback == g_Hooks[i].pCallback)
-		{
-			g_SendProxyManager.UnhookProxy(i);
-			return true;
-		}
-	return false;
-}
-
-bool SendProxyManagerInterfaceImpl::UnhookProxyGamerules(SendProp * pProp, CallBackType iCallbackType, void * pCallback)
-{
-	const char * pPropName = pProp->GetName();
-	return UnhookProxyGamerules(pPropName, iCallbackType, pCallback);
-}
-
-bool SendProxyManagerInterfaceImpl::UnhookProxyGamerules(const char * pProp, CallBackType iCallbackType, void * pCallback)
-{
-	if (!pProp || !*pProp)
-		return false;
-	for (int i = 0; i < g_HooksGamerules.Count(); i++)
-		if (g_HooksGamerules[i].iCallbackType == iCallbackType && !strcmp(g_HooksGamerules[i].pVar->GetName(), pProp) && pCallback == g_HooksGamerules[i].pCallback)
-		{
-			g_SendProxyManager.UnhookProxyGamerules(i);
-			return true;
-		}
-	return false;
-}
-
-bool SendProxyManagerInterfaceImpl::AddUnhookListener(IExtension * pExt, SendProp * pProp, CBaseEntity * pEntity, CallBackType iCallbackType, void * pCallback, ISendProxyUnhookListener * pListener)
-{
-	const char * pPropName = pProp->GetName();
-	return AddUnhookListener(pExt, pPropName, pEntity, iCallbackType, pCallback, pListener);
-}
-
-bool SendProxyManagerInterfaceImpl::AddUnhookListener(IExtension * pExt, const char * pProp, CBaseEntity * pEntity, CallBackType iCallbackType, void * pCallback, ISendProxyUnhookListener * pListener)
-{
-	if (!pProp || !*pProp)
-		return false;
-	edict_t * pEdict = gameents->BaseEntityToEdict(pEntity);
-	for (int i = 0; i < g_Hooks.Count(); i++)
-		if (pEdict == g_Hooks[i].pEnt && g_Hooks[i].iCallbackType == iCallbackType && !strcmp(g_Hooks[i].pVar->GetName(), pProp) && pCallback == g_Hooks[i].pCallback)
-		{
-			ListenerCallbackInfo info;
-			info.m_pExt = pExt;
-			info.m_pCallBack = pListener;
-			HookExtensionUnload(pExt, &info);
-			g_Hooks[i].vListeners.AddToTail(info);
-			return true;
-		}
-	return false;
-}
-
-bool SendProxyManagerInterfaceImpl::AddUnhookListenerGamerules(IExtension * pExt, SendProp * pProp, CallBackType iCallbackType, void * pCallback, ISendProxyUnhookListener * pListener)
-{
-	const char * pPropName = pProp->GetName();
-	return AddUnhookListenerGamerules(pExt, pPropName, iCallbackType, pCallback, pListener);
-}
-
-bool SendProxyManagerInterfaceImpl::AddUnhookListenerGamerules(IExtension * pExt, const char * pProp, CallBackType iCallbackType, void * pCallback, ISendProxyUnhookListener * pListener)
-{
-	if (!pProp || !*pProp)
-		return false;
-	for (int i = 0; i < g_HooksGamerules.Count(); i++)
-		if (g_HooksGamerules[i].iCallbackType == iCallbackType && !strcmp(g_HooksGamerules[i].pVar->GetName(), pProp) && pCallback == g_HooksGamerules[i].pCallback)
-		{
-			ListenerCallbackInfo info;
-			info.m_pExt = pExt;
-			info.m_pCallBack = pListener;
-			HookExtensionUnload(pExt, &info);
-			g_HooksGamerules[i].vListeners.AddToTail(info);
-			return true;
-		}
-	return false;
-}
-
-bool SendProxyManagerInterfaceImpl::RemoveUnhookListener(IExtension * pExt, SendProp * pProp, CBaseEntity * pEntity, CallBackType iCallbackType, void * pCallback, ISendProxyUnhookListener * pListener)
-{
-	const char * pPropName = pProp->GetName();
-	return RemoveUnhookListener(pExt, pPropName, pEntity, iCallbackType, pCallback, pListener);
-}
-
-bool SendProxyManagerInterfaceImpl::RemoveUnhookListener(IExtension * pExt, const char * pProp, CBaseEntity * pEntity, CallBackType iCallbackType, void * pCallback, ISendProxyUnhookListener * pListener)
-{
-	if (!pProp || !*pProp)
-		return false;
-	
-	edict_t * pEdict = gameents->BaseEntityToEdict(pEntity);
-	for (int i = 0; i < g_Hooks.Count(); i++)
-		if (g_Hooks[i].pEnt == pEdict && g_Hooks[i].iCallbackType == iCallbackType && !strcmp(g_Hooks[i].pVar->GetName(), pProp) && pCallback == g_Hooks[i].pCallback)
-		{
-			for (int j = 0; j < g_Hooks[i].vListeners.Count(); j++)
-			{
-				ListenerCallbackInfo info = g_Hooks[i].vListeners[j];
-				if (info.m_pExt == pExt && info.m_pCallBack == pListener)
-				{
-					g_Hooks[i].vListeners.Remove(j);
-					UnhookExtensionUnload(pExt, &info);
-					return true;
-				}
-			}
-		}
-	return false;
-}
-
-bool SendProxyManagerInterfaceImpl::RemoveUnhookListenerGamerules(IExtension * pExt, SendProp * pProp, CallBackType iCallbackType, void * pCallback, ISendProxyUnhookListener * pListener)
-{
-	const char * pPropName = pProp->GetName();
-	return RemoveUnhookListenerGamerules(pExt, pPropName, iCallbackType, pCallback, pListener);
-}
-
-bool SendProxyManagerInterfaceImpl::RemoveUnhookListenerGamerules(IExtension * pExt, const char * pProp, CallBackType iCallbackType, void * pCallback, ISendProxyUnhookListener * pListener)
-{
-	if (!pProp || !*pProp)
-		return false;
-	
-	for (int i = 0; i < g_HooksGamerules.Count(); i++)
-		if (g_HooksGamerules[i].iCallbackType == iCallbackType && !strcmp(g_HooksGamerules[i].pVar->GetName(), pProp) && pCallback == g_HooksGamerules[i].pCallback)
-		{
-			for (int j = 0; j < g_HooksGamerules[i].vListeners.Count(); j++)
-			{
-				ListenerCallbackInfo info = g_HooksGamerules[i].vListeners[j];
-				if (info.m_pExt == pExt && info.m_pCallBack == pListener)
-				{
-					g_HooksGamerules[i].vListeners.Remove(j);
-					UnhookExtensionUnload(pExt, &info);
-					return true;
-				}
-			}
-		}
 	return false;
 }

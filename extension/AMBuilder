@@ -7,7 +7,9 @@ projectName = 'sendproxy'
 sourceFiles = [
   'extension.cpp',
   'CDetour/detours.cpp',
-  'asm/asm.c'
+  'asm/asm.c',
+  'natives.cpp',
+  'interface.cpp'
 ]
 
 ###############

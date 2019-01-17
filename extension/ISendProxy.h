@@ -46,23 +46,11 @@ class ISendProxyUnhookListener;
 
 using namespace SourceMod;
 
-template <class T, class A = CUtlMemory<T>>
-class CModifiedUtlVector : public CUtlVector<T, A>
-{
-public:
-	CModifiedUtlVector(int growSize = 0, int initSize = 0) : CUtlVector<T, A>(growSize, initSize) {}
-	CModifiedUtlVector(T * pMemory, int allocationCount, int numElements = 0) : CUtlVector<T, A>(pMemory, allocationCount, numElements) {}
-	
-	//allow copy constructor
-	CModifiedUtlVector(CModifiedUtlVector const& vec) { *this = vec; } //= is overriden
-};
-
 enum class PropType : uint8_t
 {
 	Prop_Int = 0,
-	Prop_Float = 1, 
-	Prop_String = 2,
-	Prop_Array = 3,
+	Prop_Float, 
+	Prop_String,
 	Prop_Vector = 4,
 	Prop_Max
 };
@@ -71,63 +59,6 @@ enum class CallBackType : uint8_t
 {
 	Callback_PluginFunction = 1,
 	Callback_CPPFunction //see ISendProxyCallbacks
-};
-
-struct ListenerCallbackInfo
-{
-	IExtension *				m_pExt;
-	IExtensionInterface *		m_pExtAPI;
-	ISendProxyUnhookListener *	m_pCallBack;
-	int 						m_iUnloadHook{0};
-};
-
-struct SendPropHook
-{
-	void *									pCallback;
-	CallBackType							iCallbackType;
-	SendProp *								pVar;
-	edict_t *								pEnt;
-	SendVarProxyFn							pRealProxy;
-	int										objectID;
-	PropType								PropType;
-	int										Offset;
-	int										Element{0};
-	CModifiedUtlVector<ListenerCallbackInfo>	vListeners;
-};
-
-struct SendPropHookGamerules
-{
-	void *									pCallback;
-	CallBackType							iCallbackType;
-	SendProp *								pVar;
-	SendVarProxyFn							pRealProxy;
-	PropType								PropType;
-	int										Offset;
-	int										Element{0};
-	CModifiedUtlVector<ListenerCallbackInfo>	vListeners;
-};
-
-struct PropChangeHook
-{
-	IPluginFunction *						pCallback;
-	int										iLastValue;
-	float									flLastValue;
-	char									cLastValue[4096];
-	SendProp *								pVar;
-	PropType								PropType;
-	unsigned int							Offset;
-	int										objectID;
-};
-
-struct PropChangeHookGamerules
-{
-	IPluginFunction *						pCallback;
-	int										iLastValue;
-	float									flLastValue;
-	char									cLastValue[4096];
-	SendProp *								pVar;
-	PropType								PropType;
-	unsigned int							Offset;
 };
  
 class ISendProxyUnhookListener
@@ -196,8 +127,9 @@ public: //SMInterface
 	
 public: //ISendProxyManager
 	/*
-	 * Hooks SendProp of entity, extension MUST remove ALL his hooks with no plugin callbacks on unload!!!
+	 * Hooks SendProp of entity, this hook removes automatically when extension in unloaded.
 	 *
+	 * @param pMyself		Pointer to IExtension interface of current extension, must be valid!
 	 * @param pProp			Pointer to SendProp / name of the prop that should be hooked
 	 * @param pEntity		Pointer to CBaseEntity object that should be hooked
 	 * @param iType			PropType of the prop
@@ -206,11 +138,12 @@ public: //ISendProxyManager
 	 *
 	 * @return				true, if prop hooked, false otherwise
 	 */
-	virtual bool HookProxy(SendProp * pProp, CBaseEntity * pEntity, PropType iType, CallBackType iCallbackType, void * pCallback) = 0;
-	virtual bool HookProxy(const char * pProp, CBaseEntity * pEntity, PropType iType, CallBackType iCallbackType, void * pCallback) = 0;
+	virtual bool HookProxy(IExtension * pMyself, SendProp * pProp, CBaseEntity * pEntity, PropType iType, CallBackType iCallbackType, void * pCallback) = 0;
+	virtual bool HookProxy(IExtension * pMyself, const char * pProp, CBaseEntity * pEntity, PropType iType, CallBackType iCallbackType, void * pCallback) = 0;
 	/*
-	 * Hooks gamerules SendProp, extension MUST remove ALL his hooks with no plugin callbacks on unload!!!
+	 * Hooks gamerules SendProp, this hook removes automatically when extension in unloaded.
 	 *
+	 * @param pMyself		Pointer to IExtension interface of current extension, must be valid!
 	 * @param pProp			Pointer to SendProp / name of the prop that should be hooked
 	 * @param iType			PropType of the prop
 	 * @param iCallbackType	Type of callback
@@ -218,11 +151,12 @@ public: //ISendProxyManager
 	 *
 	 * @return				true, if prop hooked, false otherwise
 	 */
-	virtual bool HookProxyGamerules(SendProp * pProp, PropType iType, CallBackType iCallbackType, void * pCallback) = 0;
-	virtual bool HookProxyGamerules(const char * pProp, PropType iType, CallBackType iCallbackType, void * pCallback) = 0;
+	virtual bool HookProxyGamerules(IExtension * pMyself, SendProp * pProp, PropType iType, CallBackType iCallbackType, void * pCallback) = 0;
+	virtual bool HookProxyGamerules(IExtension * pMyself, const char * pProp, PropType iType, CallBackType iCallbackType, void * pCallback) = 0;
 	/*
 	 * Unhooks SendProp of entity
 	 *
+	 * @param pMyself		Pointer to IExtension interface of current extension, must be valid!
 	 * @param pProp			Pointer to SendProp / name of the prop that should be unhooked
 	 * @param pEntity		Pointer to CBaseEntity object that should be unhooked
 	 * @param iCallbackType	Type of callback
@@ -231,11 +165,12 @@ public: //ISendProxyManager
 	 * @return				true, if prop unhooked, false otherwise
 	 *						P.S. This function will trigger unhook listeners
 	 */
-	virtual bool UnhookProxy(SendProp * pProp, CBaseEntity * pEntity, CallBackType iCallbackType, void * pCallback) = 0;
-	virtual bool UnhookProxy(const char * pProp, CBaseEntity * pEntity, CallBackType iCallbackType, void * pCallback) = 0;
+	virtual bool UnhookProxy(IExtension * pMyself, SendProp * pProp, CBaseEntity * pEntity, CallBackType iCallbackType, void * pCallback) = 0;
+	virtual bool UnhookProxy(IExtension * pMyself, const char * pProp, CBaseEntity * pEntity, CallBackType iCallbackType, void * pCallback) = 0;
 	/*
 	 * Unhooks gamerules SendProp
 	 *
+	 * @param pMyself		Pointer to IExtension interface of current extension, must be valid!
 	 * @param pProp			Pointer to SendProp / name of the prop that should be unhooked
 	 * @param iCallbackType	Type of callback
 	 * @param pCallback		Pointer to callback function / class
@@ -243,11 +178,12 @@ public: //ISendProxyManager
 	 * @return				true, if prop unhooked, false otherwise
 	 *						P.S. This function will trigger unhook listeners
 	 */
-	virtual bool UnhookProxyGamerules(SendProp * pProp, CallBackType iCallbackType, void * pCallback) = 0;
-	virtual bool UnhookProxyGamerules(const char * pProp, CallBackType iCallbackType, void * pCallback) = 0;
+	virtual bool UnhookProxyGamerules(IExtension * pMyself, SendProp * pProp, CallBackType iCallbackType, void * pCallback) = 0;
+	virtual bool UnhookProxyGamerules(IExtension * pMyself, const char * pProp, CallBackType iCallbackType, void * pCallback) = 0;
 	/*
-	 * Adds unhook listener to entity hook, so, when hook will be removed listener callback is called
+	 * Adds unhook listener to entity hook, so, when hook will be removed listener callback is called. This listener removes automatically when extension in unloaded.
 	 *
+	 * @param pMyself		Pointer to IExtension interface of current extension, must be valid!
 	 * @param pProp			Pointer to SendProp / name of the prop that should be listen
 	 * @param pEntity		Pointer to CBaseEntity object that should be listen
 	 * @param iCallbackType	Type of callback of entity hook
@@ -258,9 +194,10 @@ public: //ISendProxyManager
 	 */
 	virtual bool AddUnhookListener(IExtension * pMyself, SendProp * pProp, CBaseEntity * pEntity, CallBackType iCallbackType, void * pCallback, ISendProxyUnhookListener * pListener) = 0;
 	virtual bool AddUnhookListener(IExtension * pMyself, const char * pProp, CBaseEntity * pEntity, CallBackType iCallbackType, void * pCallback, ISendProxyUnhookListener * pListener) = 0;
-	 /*
-	 * Adds unhook listener to gamerules hook, so, when hook will removed listener callback is called
+	/*
+	 * Adds unhook listener to gamerules hook, so, when hook will removed listener callback is called. This listener removes automatically when extension in unloaded.
 	 *
+	 * @param pMyself		Pointer to IExtension interface of current extension, must be valid!
 	 * @param pProp			Pointer to SendProp / name of the prop that should be listen
 	 * @param iCallbackType	Type of callback of gamerules hook
 	 * @param pCallback		Pointer to callback function / class of gamerules hook
@@ -270,10 +207,10 @@ public: //ISendProxyManager
 	 */
 	virtual bool AddUnhookListenerGamerules(IExtension * pMyself, SendProp * pProp, CallBackType iCallbackType, void * pCallback, ISendProxyUnhookListener * pListener) = 0;
 	virtual bool AddUnhookListenerGamerules(IExtension * pMyself, const char * pProp, CallBackType iCallbackType, void * pCallback, ISendProxyUnhookListener * pListener) = 0;
-	 /*
+	/*
 	 * Removes unhook listener from entity hook
 	 *
-	 * @param pMyself		Pointer to IExtension interface of current extension
+	 * @param pMyself		Pointer to IExtension interface of current extension, must be valid!
 	 * @param pProp			Pointer to SendProp / name of the prop that is listening
 	 * @param pEntity		Pointer to CBaseEntity object that is listening
 	 * @param iCallbackType	Type of callback of entity hook
@@ -284,10 +221,10 @@ public: //ISendProxyManager
 	 */
 	virtual bool RemoveUnhookListener(IExtension * pMyself, SendProp * pProp, CBaseEntity * pEntity, CallBackType iCallbackType, void * pCallback, ISendProxyUnhookListener * pListener) = 0;
 	virtual bool RemoveUnhookListener(IExtension * pMyself, const char * pProp, CBaseEntity * pEntity, CallBackType iCallbackType, void * pCallback, ISendProxyUnhookListener * pListener) = 0;
-	  /*
+	/*
 	 * Removes unhook listener from gamerules hook
 	 *
-	 * @param pMyself		Pointer to IExtension interface of current extension
+	 * @param pMyself		Pointer to IExtension interface of current extension, must be valid!
 	 * @param pProp			Pointer to SendProp / name of the prop that is listening
 	 * @param iCallbackType	Type of callback of gamerules hook
 	 * @param pCallback		Pointer to callback function / class of gamerules hook
@@ -297,6 +234,165 @@ public: //ISendProxyManager
 	 */
 	virtual bool RemoveUnhookListenerGamerules(IExtension * pMyself, SendProp * pProp, CallBackType iCallbackType, void * pCallback, ISendProxyUnhookListener * pListener) = 0;
 	virtual bool RemoveUnhookListenerGamerules(IExtension * pMyself, const char * pProp, CallBackType iCallbackType, void * pCallback, ISendProxyUnhookListener * pListener) = 0;
+	/*
+	 * Hooks element of SendProp array of entity, this hook removes automatically when extension in unloaded.
+	 *
+	 * @param pMyself		Pointer to IExtension interface of current extension, must be valid!
+	 * @param pProp			Pointer to SendProp / name of the prop that should be hooked
+	 * @param pEntity		Pointer to CBaseEntity object that should be hooked
+	 * @param iType			PropType of the prop
+	 * @param iElement		Element number
+	 * @param iCallbackType	Type of callback
+	 * @param pCallback		Pointer to callback function / class
+	 *
+	 * @return				true, if prop hooked, false otherwise
+	 */
+	virtual bool HookProxyArray(IExtension * pMyself, SendProp * pProp, CBaseEntity * pEntity, PropType iType, int iElement, CallBackType iCallbackType, void * pCallback) = 0;
+	virtual bool HookProxyArray(IExtension * pMyself, const char * pProp, CBaseEntity * pEntity, PropType iType, int iElement, CallBackType iCallbackType, void * pCallback) = 0;
+	
+	/*
+	 * Unhooks element of SendProp array of entity
+	 *
+	 * @param pMyself		Pointer to IExtension interface of current extension, must be valid!
+	 * @param pProp			Pointer to SendProp / name of the prop that should be unhooked
+	 * @param pEntity		Pointer to CBaseEntity object that should be unhooked
+	 * @param iElement		Element number
+	 * @param iCallbackType	Type of callback
+	 * @param pCallback		Pointer to callback function / class
+	 *
+	 * @return				true, if prop unhooked, false otherwise
+	 *						P.S. This function will trigger unhook listeners
+	 */
+	virtual bool UnhookProxyArray(IExtension * pMyself, SendProp * pProp, CBaseEntity * pEntity, int iElement, CallBackType iCallbackType, void * pCallback) = 0;
+	virtual bool UnhookProxyArray(IExtension * pMyself, const char * pProp, CBaseEntity * pEntity, int iElement, CallBackType iCallbackType, void * pCallback) = 0;
+	/*
+	 * Hooks element of gamerules SendProp array, this hook removes automatically when extension in unloaded.
+	 *
+	 * @param pMyself		Pointer to IExtension interface of current extension, must be valid!
+	 * @param pProp			Pointer to SendProp / name of the prop that should be hooked
+	 * @param iType			PropType of the prop
+	 * @param iElement		Element number
+	 * @param iCallbackType	Type of callback
+	 * @param pCallback		Pointer to callback function / class
+	 *
+	 * @return				true, if prop hooked, false otherwise
+	 */
+	virtual bool HookProxyArrayGamerules(IExtension * pMyself, SendProp * pProp, PropType iType, int iElement, CallBackType iCallbackType, void * pCallback) = 0;
+	virtual bool HookProxyArrayGamerules(IExtension * pMyself, const char * pProp, PropType iType, int iElement, CallBackType iCallbackType, void * pCallback) = 0;
+	
+	/*
+	 * Unhooks element of gamerules SendProp array
+	 *
+	 * @param pMyself		Pointer to IExtension interface of current extension, must be valid!
+	 * @param pProp			Pointer to SendProp / name of the prop that should be unhooked
+	 * @param iElement		Element number
+	 * @param iCallbackType	Type of callback
+	 * @param pCallback		Pointer to callback function / class
+	 *
+	 * @return				true, if prop unhooked, false otherwise
+	 * 						P.S. This function will trigger unhook listeners
+	 */
+	virtual bool UnhookProxyArrayGamerules(IExtension * pMyself, SendProp * pProp, int iElement, CallBackType iCallbackType, void * pCallback) = 0;
+	virtual bool UnhookProxyArrayGamerules(IExtension * pMyself, const char * pProp, int iElement, CallBackType iCallbackType, void * pCallback) = 0;
+	
+	/*
+	 * Adds unhook listener to entity array hook, so, when hook will be removed listener callback is called. This listener removes automatically when extension in unloaded.
+	 *
+	 * @param pMyself		Pointer to IExtension interface of current extension, must be valid!
+	 * @param pProp			Pointer to SendProp / name of the prop that should be listen
+	 * @param pEntity		Pointer to CBaseEntity object that should be listen
+	 * @param iElement		Element number
+	 * @param iCallbackType	Type of callback of entity hook
+	 * @param pCallback		Pointer to callback function / class of entity hook
+	 * @param pListener		Pointer to listener callback
+	 *
+	 * @return				true, if listener installed, false otherwise
+	 */
+	virtual bool AddUnhookListenerArray(IExtension * pMyself, SendProp * pProp, CBaseEntity * pEntity, int iElement, CallBackType iCallbackType, void * pCallback, ISendProxyUnhookListener * pListener) = 0;
+	virtual bool AddUnhookListenerArray(IExtension * pMyself, const char * pProp, CBaseEntity * pEntity, int iElement, CallBackType iCallbackType, void * pCallback, ISendProxyUnhookListener * pListener) = 0;
+	/*
+	 * Adds unhook listener to gamerules array hook, so, when hook will removed listener callback is called. This listener removes automatically when extension in unloaded.
+	 *
+	 * @param pMyself		Pointer to IExtension interface of current extension, must be valid!
+	 * @param pProp			Pointer to SendProp / name of the prop that should be listen
+	 * @param iElement		Element number
+	 * @param iCallbackType	Type of callback of gamerules hook
+	 * @param pCallback		Pointer to callback function / class of gamerules hook
+	 * @param pListener		Pointer to listener callback
+	 *
+	 * @return				true, if listener installed, false otherwise
+	 */
+	virtual bool AddUnhookListenerArrayGamerules(IExtension * pMyself, SendProp * pProp, int iElement, CallBackType iCallbackType, void * pCallback, ISendProxyUnhookListener * pListener) = 0;
+	virtual bool AddUnhookListenerArrayGamerules(IExtension * pMyself, const char * pProp, int iElement, CallBackType iCallbackType, void * pCallback, ISendProxyUnhookListener * pListener) = 0;
+	/*
+	 * Removes unhook listener from entity array hook
+	 *
+	 * @param pMyself		Pointer to IExtension interface of current extension, must be valid!
+	 * @param pProp			Pointer to SendProp / name of the prop that is listening
+	 * @param pEntity		Pointer to CBaseEntity object that is listening
+	 * @param iElement		Element number
+	 * @param iCallbackType	Type of callback of entity hook
+	 * @param pCallback		Pointer to callback function / class of entity hook
+	 * @param pListener		Pointer to listener callback
+	 *
+	 * @return				true, if listener removed, false otherwise
+	 */
+	virtual bool RemoveUnhookListenerArray(IExtension * pMyself, SendProp * pProp, CBaseEntity * pEntity, int iElement, CallBackType iCallbackType, void * pCallback, ISendProxyUnhookListener * pListener) = 0;
+	virtual bool RemoveUnhookListenerArray(IExtension * pMyself, const char * pProp, CBaseEntity * pEntity, int iElement, CallBackType iCallbackType, void * pCallback, ISendProxyUnhookListener * pListener) = 0;
+	/*
+	 * Removes unhook listener from gamerules array hook
+	 *
+	 * @param pMyself		Pointer to IExtension interface of current extension, must be valid!
+	 * @param pProp			Pointer to SendProp / name of the prop that is listening
+	 * @param iElement		Element number
+	 * @param iCallbackType	Type of callback of gamerules hook
+	 * @param pCallback		Pointer to callback function / class of gamerules hook
+	 * @param pListener		Pointer to listener callback
+	 *
+	 * @return				true, if listener removed, false otherwise
+	 */
+	virtual bool RemoveUnhookListenerArrayGamerules(IExtension * pMyself, SendProp * pProp, int iElement, CallBackType iCallbackType, void * pCallback, ISendProxyUnhookListener * pListener) = 0;
+	virtual bool RemoveUnhookListenerArrayGamerules(IExtension * pMyself, const char * pProp, int iElement, CallBackType iCallbackType, void * pCallback, ISendProxyUnhookListener * pListener) = 0;
+	/*
+	 * Checks if proxy is hooked
+	 *
+	 * @param pProp			Pointer to SendProp / name of the prop that should be checked
+	 * @param pEntity		Pointer to CBaseEntity object that should be checked
+	 *
+	 * @return				true, if is hooked, false otherwise
+	 */
+	virtual bool IsProxyHooked(SendProp * pProp, CBaseEntity * pEntity) = 0;
+	virtual bool IsProxyHooked(const char * pProp, CBaseEntity * pEntity) = 0;
+	/*
+	 * Checks if gamerules proxy is hooked
+	 *
+	 * @param pProp			Pointer to SendProp / name of the prop that should be checked
+	 *
+	 * @return				true, if is hooked, false otherwise
+	 */
+	virtual bool IsProxyHookedGamerules(SendProp * pProp) = 0;
+	virtual bool IsProxyHookedGamerules(const char * pProp) = 0;
+	/*
+	 * Checks if proxy array is hooked
+	 *
+	 * @param pProp			Pointer to SendProp / name of the prop that should be checked
+	 * @param pEntity		Pointer to CBaseEntity object that should be checked
+	 * @param iElement		Element number
+	 *
+	 * @return				true, if is hooked, false otherwise
+	 */
+	virtual bool IsProxyHookedArray(SendProp * pProp, CBaseEntity * pEntity, int iElement) = 0;
+	virtual bool IsProxyHookedArray(const char * pProp, CBaseEntity * pEntity, int iElement) = 0;
+	/*
+	 * Checks if gamerules proxy is hooked
+	 *
+	 * @param pProp			Pointer to SendProp / name of the prop that should be checked
+	 * @param iElement		Element number
+	 *
+	 * @return				true, if is hooked, false otherwise
+	 */
+	virtual bool IsProxyHookedArrayGamerules(SendProp * pProp, int iElement) = 0;
+	virtual bool IsProxyHookedArrayGamerules(const char * pProp, int iElement) = 0;
 };
 
 #endif

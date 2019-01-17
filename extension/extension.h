@@ -34,21 +34,20 @@
 
  /*
 	TODO:
-		Implement interface for prop change hooks & array props
-		Add Native_HookArrayPropGamerules & Native_UnhookArrayPropSendProxy
+		Implement interface for prop change hooks
 		Split extension.cpp into modules: natives.cpp, interface.cpp & extension.cpp
-		Try to fix and use sv_parallel_sendsnapshot & sv_parallel_packentities if possible
-		Allow multiple hooks for prop on same enity (probably use delegate for this?)
-		Prop hooks also should removes automatically for extensions
+		Allow multiple hooks for prop on same entity (probably use delegate for this?)
 		More optimizations! =D
  */
 
 #include "smsdk_ext.h"
 #include "convar.h"
+#include "server_class.h"
 #include <string>
 #include <stdint.h>
-#include <ISDKHooks.h>
 #include "ISendProxy.h"
+#include <ISDKHooks.h>
+#include <ISDKTools.h>
 
 #define GET_CONVAR(name) \
 	name = g_pCVar->FindVar(#name); \
@@ -61,10 +60,76 @@
 
 void GlobalProxy(const SendProp *pProp, const void *pStructBase, const void* pData, DVariant *pOut, int iElement, int objectID);
 void GlobalProxyGamerules(const SendProp *pProp, const void *pStructBase, const void* pData, DVariant *pOut, int iElement, int objectID);
-/**
- * @brief Sample implementation of the SDK Extension.
- * Note: Uncomment one of the pre-defined virtual functions in order to use it.
- */
+bool IsPropValid(SendProp *, PropType);
+
+template <class T, class A = CUtlMemory<T>>
+class CModifiedUtlVector : public CUtlVector<T, A>
+{
+public:
+	CModifiedUtlVector(int growSize = 0, int initSize = 0) : CUtlVector<T, A>(growSize, initSize) {}
+	CModifiedUtlVector(T * pMemory, int allocationCount, int numElements = 0) : CUtlVector<T, A>(pMemory, allocationCount, numElements) {}
+	//allow copy constructor
+	CModifiedUtlVector(CModifiedUtlVector const& vec) { *this = vec; } //= is overloaded
+};
+
+struct ListenerCallbackInfo
+{
+	IExtension *							m_pExt;
+	IExtensionInterface *					m_pExtAPI;
+	ISendProxyUnhookListener *				m_pCallBack;
+};
+
+struct SendPropHook
+{
+	void *									pCallback;
+	CallBackType							iCallbackType;
+	SendProp *								pVar;
+	edict_t *								pEnt;
+	SendVarProxyFn							pRealProxy;
+	int										objectID;
+	PropType								PropType;
+	int										Offset;
+	int										Element{0};
+	IExtensionInterface *					pExtensionAPI{nullptr};
+	CModifiedUtlVector<ListenerCallbackInfo>	vListeners;
+};
+
+struct SendPropHookGamerules
+{
+	void *									pCallback;
+	CallBackType							iCallbackType;
+	SendProp *								pVar;
+	SendVarProxyFn							pRealProxy;
+	PropType								PropType;
+	int										Offset;
+	int										Element{0};
+	IExtensionInterface *					pExtensionAPI{nullptr};
+	CModifiedUtlVector<ListenerCallbackInfo>	vListeners;
+};
+
+struct PropChangeHook
+{
+	IPluginFunction *						pCallback;
+	int										iLastValue;
+	float									flLastValue;
+	char									cLastValue[4096];
+	SendProp *								pVar;
+	PropType								PropType;
+	unsigned int							Offset;
+	int										objectID;
+};
+
+struct PropChangeHookGamerules
+{
+	IPluginFunction *						pCallback;
+	int										iLastValue;
+	float									flLastValue;
+	char									cLastValue[4096];
+	SendProp *								pVar;
+	PropType								PropType;
+	unsigned int							Offset;
+};
+ 
 class SendProxyManager :
 	public SDKExtension,
 	public IPluginsListener,
@@ -101,43 +166,15 @@ public:
 #endif
 };
 
-class SendProxyManagerInterfaceImpl : public ISendProxyManager
-{
-public: //SMInterface
-	virtual const char * GetInterfaceName();
-	virtual unsigned int GetInterfaceVersion();
-public: //interface impl:
-	virtual bool HookProxy(SendProp *, CBaseEntity *, PropType, CallBackType, void *);
-	virtual bool HookProxy(const char *, CBaseEntity *, PropType, CallBackType, void *);
-	virtual bool HookProxyGamerules(SendProp *, PropType, CallBackType, void *);
-	virtual bool HookProxyGamerules(const char *, PropType, CallBackType, void *);
-	virtual bool UnhookProxy(SendProp *, CBaseEntity *, CallBackType, void *);
-	virtual bool UnhookProxy(const char *, CBaseEntity *, CallBackType, void *);
-	virtual bool UnhookProxyGamerules(SendProp *, CallBackType, void *);
-	virtual bool UnhookProxyGamerules(const char *, CallBackType, void *);
-	virtual bool AddUnhookListener(IExtension *, SendProp *, CBaseEntity *, CallBackType, void *, ISendProxyUnhookListener *);
-	virtual bool AddUnhookListener(IExtension *, const char *, CBaseEntity *, CallBackType, void *, ISendProxyUnhookListener *);
-	virtual bool AddUnhookListenerGamerules(IExtension *, SendProp *, CallBackType, void *, ISendProxyUnhookListener *);
-	virtual bool AddUnhookListenerGamerules(IExtension *, const char *, CallBackType, void *, ISendProxyUnhookListener *);
-	virtual bool RemoveUnhookListener(IExtension *, SendProp *, CBaseEntity *, CallBackType, void *, ISendProxyUnhookListener *);
-	virtual bool RemoveUnhookListener(IExtension *, const char *, CBaseEntity *, CallBackType, void *, ISendProxyUnhookListener *);
-	virtual bool RemoveUnhookListenerGamerules(IExtension *, SendProp *, CallBackType, void *, ISendProxyUnhookListener *);
-	virtual bool RemoveUnhookListenerGamerules(IExtension *, const char *, CallBackType, void *, ISendProxyUnhookListener *);
-	
-	/*TODO:
-		HookProxyArray
-		HookProxyArrayGamerules
-		UnhookProxyArray
-		UnhookProxyArrayGamerules
-		AddUnhookListenerArray
-		RemoveUnhookListenerArray
-		AddUnhookListenerArrayGamerules
-		RemoveUnhookListenerArrayGamerules
-		IsProxyHooked
-		IsGamerulesProxyHooked
-		IsArrayProxyHooked
-		IsArrayGamerulesProxyHooked
-	*/
-};
+extern SendProxyManager g_SendProxyManager;
+extern CGlobalVars * g_pGlobals;
+extern IServerGameEnts * gameents;
+extern CUtlVector<SendPropHook> g_Hooks;
+extern CUtlVector<SendPropHookGamerules> g_HooksGamerules;
+extern CUtlVector<PropChangeHook> g_ChangeHooks;
+extern CUtlVector<PropChangeHookGamerules> g_ChangeHooksGamerules;
+extern const char * g_szGameRulesProxy;
+extern int g_iEdictCount;
+extern ISDKTools * g_pSDKTools;
 
 #endif // _INCLUDE_SOURCEMOD_EXTENSION_PROPER_H_
