@@ -34,14 +34,14 @@
 
  /*
 	TODO:
-		Implement interface for prop change hooks
-		Split extension.cpp into modules: natives.cpp, interface.cpp & extension.cpp
+		Implement interface for prop change hooks & add natives
 		Allow multiple hooks for prop on same entity (probably use delegate for this?)
-		More optimizations! =D
+		More optimizations (maybe try to fix crashes and use threads?) if possible! =D
  */
 
 #include "smsdk_ext.h"
 #include "convar.h"
+#include "dt_send.h"
 #include "server_class.h"
 #include <string>
 #include <stdint.h>

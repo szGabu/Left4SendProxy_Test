@@ -601,5 +601,17 @@ const sp_nativeinfo_t g_MyNatives[] = {
 	{"SendProxy_UnhookArrayPropGamerules", Native_UnhookArrayPropGamerules},
 	{"SendProxy_IsHookedArrayProp", Native_IsHookedArray},
 	{"SendProxy_IsHookedArrayPropGamerules", Native_IsHookedArrayGameRules},
+	/*TODO: add more natives:
+		Native_HookPropChangeArray
+		Native_UnhookPropChangeArray
+		Native_HookPropChangeArrayGameRules
+		Native_UnhookPropChangeArrayGameRules
+		Native_IsPropGhangeHooked
+		Native_IsPropGhangeHookedGameRules
+		Native_IsPropGhangeArrayHooked
+		Native_IsPropGhangeArrayHookedGameRules
+		and...
+		Probably add listeners for plugins?
+	*/
 	{NULL,	NULL},
 };

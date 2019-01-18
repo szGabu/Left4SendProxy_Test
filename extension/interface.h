@@ -86,7 +86,7 @@ public: //interface impl:
 	virtual bool IsProxyHookedArray(const char *, CBaseEntity *, int);
 	virtual bool IsProxyHookedArrayGamerules(SendProp *, int);
 	virtual bool IsProxyHookedArrayGamerules(const char *, int);
-	//TODO: same for the change hooks wtf
+	//TODO: same for the change hooks wtf, somebody else can do this if he want, it's pretty easy
 };
 
 #endif
