@@ -33,10 +33,14 @@ native bool SendProxy_Hook(int entity, char[] propname, SendPropType proptype, S
 native bool SendProxy_HookGameRules(char[] propname, SendPropType proptype, SendProxyCallbackGamerules callback);
 native bool SendProxy_HookArrayProp(int entity, const char[] name, int element, SendPropType type, SendProxyCallback callback);
 native bool SendProxy_UnhookArrayProp(int entity, const char[] name, int element, SendPropType type, SendProxyCallback callback);
-native bool SendProxy_Unhook(int entity, char[] propname, SendProxyCallback callback);
-native bool SendProxy_UnhookGameRules(char[] propname, SendProxyCallbackGamerules callback);
-native bool SendProxy_IsHooked(int entity, char[] propname);
-native bool SendProxy_IsHookedGameRules(char[] propname);
+native bool SendProxy_Unhook(int entity, const char[] propname, SendProxyCallback callback);
+native bool SendProxy_UnhookGameRules(const char[] propname, SendProxyCallbackGamerules callback);
+native bool SendProxy_IsHooked(int entity, const char[] propname);
+native bool SendProxy_IsHookedGameRules(const char[] propname);
+native bool SendProxy_HookArrayPropGamerules(const char[] cPropname, int iElement, SendPropType iType, SendProxyCallbackGamerules pCallback);
+native bool SendProxy_UnhookArrayPropGamerules(const char[] cPropname, int iElement, SendPropType iType, SendProxyCallbackGamerules pCallback);
+native bool SendProxy_IsHookedArrayProp(int iEntity, const char[] cPropname, int iElement);
+native bool SendProxy_IsHookedArrayPropGamerules(const char[] cPropname, int iElement);
 
 native bool SendProxy_HookPropChange(int entity, const char[] name, PropChangedCallback callback);
 native bool SendProxy_HookPropChangeGameRules(const char[] name, GameRulesPropChangedCallback callback);
@@ -58,6 +62,10 @@ public __ext_sendproxymanager_SetNTVOptional()
     MarkNativeAsOptional("SendProxy_HookPropChangeGameRules");
     MarkNativeAsOptional("SendProxy_UnhookPropChange");
     MarkNativeAsOptional("SendProxy_UnhookPropChangeGameRules");
+	MarkNativeAsOptional("SendProxy_HookArrayPropGamerules");
+	MarkNativeAsOptional("SendProxy_UnhookArrayPropGamerules");
+	MarkNativeAsOptional("SendProxy_IsHookedArrayProp");
+	MarkNativeAsOptional("SendProxy_IsHookedArrayPropGamerules");
 }
 #endif  
 
