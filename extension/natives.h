@@ -35,4 +35,4 @@
 #include "extension.h"
 extern const sp_nativeinfo_t g_MyNatives[];
 
-#endif;
+#endif

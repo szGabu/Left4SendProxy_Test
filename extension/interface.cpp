@@ -75,6 +75,7 @@ void HookExtensionUnload(IExtension * pExt)
 	
 	bool bHookedAlready = false;
 	for (int i = 0; i < g_Hooks.Count(); i++)
+	{
 		if (g_Hooks[i].pExtensionAPI == pExt->GetAPI())
 		{
 			bHookedAlready = true;
@@ -90,8 +91,10 @@ void HookExtensionUnload(IExtension * pExt)
 					break;
 				}
 			}
+	}
 	if (!bHookedAlready)
 		for (int i = 0; i < g_HooksGamerules.Count(); i++)
+		{
 			if (g_HooksGamerules[i].pExtensionAPI == pExt->GetAPI())
 			{
 				bHookedAlready = true;
@@ -107,6 +110,7 @@ void HookExtensionUnload(IExtension * pExt)
 						break;
 					}
 				}
+		}
 	if (!bHookedAlready) //Hook only if needed!
 		SH_ADD_HOOK(IExtensionInterface, OnExtensionUnload, pExt->GetAPI(), SH_STATIC(Hook_OnExtensionUnload), false);
 }
@@ -118,6 +122,7 @@ void UnhookExtensionUnload(IExtension * pExt)
 	
 	bool bHaveHooks = false;
 	for (int i = 0; i < g_Hooks.Count(); i++)
+	{
 		if (g_Hooks[i].pExtensionAPI == pExt->GetAPI())
 		{
 			bHaveHooks = true;
@@ -133,8 +138,10 @@ void UnhookExtensionUnload(IExtension * pExt)
 					break;
 				}
 			}
+	}
 	if (!bHaveHooks)
 		for (int i = 0; i < g_HooksGamerules.Count(); i++)
+		{
 			if (g_HooksGamerules[i].pExtensionAPI == pExt->GetAPI())
 			{
 				bHaveHooks = true;
@@ -150,6 +157,7 @@ void UnhookExtensionUnload(IExtension * pExt)
 						break;
 					}
 				}
+		}
 	
 	if (!bHaveHooks) //so, if there are active hooks, we shouldn't remove hook!
 		SH_REMOVE_HOOK(IExtensionInterface, OnExtensionUnload, pExt->GetAPI(), SH_STATIC(Hook_OnExtensionUnload), false);
