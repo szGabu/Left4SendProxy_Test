@@ -50,7 +50,6 @@
 #include "natives.h"
 
 //path: hl2sdk-<your sdk here>/public/<include>.h, "../public/" included to prevent compile errors due wrong directory scanning by compiler on my computer, and I'm too lazy to find where I can change that =D
-#include <../public/eiface.h>
 #include <../public/iserver.h>
 #include <../public/iclient.h>
 
@@ -60,16 +59,13 @@ SH_DECL_HOOK0(IServer, GetClientCount, const, false, int);
 
 DECL_DETOUR(CGameServer_SendClientMessages);
 DECL_DETOUR(CGameClient_ShouldSendMessages);
-#if SOURCE_ENGINE != SE_CSGO
 DECL_DETOUR(SV_ComputeClientPacks);
-#endif
 
 class CGameClient;
 class CFrameSnapshot;
 class CGlobalEntityList;
 
-//we will use integer to store pointer lol
-CGameClient * g_pCurrentGameClientPtr = 0;
+CGameClient * g_pCurrentGameClientPtr = nullptr;
 int g_iCurrentClientIndexInLoop = -1; //used for optimization
 int g_iEdictCount;
 bool g_bCurrentGameClientCallFwd = false;
@@ -103,6 +99,7 @@ ConVar * sv_parallel_sendsnapshot = nullptr;
 
 edict_t * g_pGameRulesProxyEdict = nullptr;
 bool g_bShouldChangeGameRulesState = false;
+bool g_bSendSnapshots = false;
 
 CGlobalVars * g_pGlobals = nullptr;
 
@@ -126,7 +123,12 @@ const char * g_szGameRulesProxy;
 DETOUR_DECL_MEMBER1(CGameServer_SendClientMessages, void, bool, bSendSnapshots)
 {
 	if (!bSendSnapshots)
+	{
+		g_bSendSnapshots = false;
 		return DETOUR_MEMBER_CALL(CGameServer_SendClientMessages)(false); //if so, we do not interested in this call
+	}
+	else
+		g_bSendSnapshots = true;
 	if (!g_pIServer && g_pSDKTools)
 		g_pIServer = g_pSDKTools->GetIServer();
 	if (!g_pIServer)
@@ -145,7 +147,7 @@ DETOUR_DECL_MEMBER1(CGameServer_SendClientMessages, void, bool, bSendSnapshots)
 	{
 		IGamePlayer * pPlayer = playerhelpers->GetGamePlayer(iClients);
 		bool bFake = (pPlayer->IsFakeClient() && !(pPlayer->IsSourceTV()
-#if SOURCE_ENGINE == SE_TF2
+#if SOURCE_ENGINE != SE_CSGO
 		|| pPlayer->IsReplay()
 #endif
 		));
@@ -177,9 +179,8 @@ DETOUR_DECL_MEMBER1(CGameServer_SendClientMessages, void, bool, bSendSnapshots)
 
 DETOUR_DECL_MEMBER0(CGameClient_ShouldSendMessages, bool)
 {
-#if SOURCE_ENGINE == SE_CSGO
-	g_bSVComputePacksDone = false;
-#endif
+	if (!g_bSendSnapshots)
+		return DETOUR_MEMBER_CALL(CGameClient_ShouldSendMessages)();
 	if (g_bCallingForNullClients)
 	{
 		IClient * pClient = (IClient *)((char *)this + 4);
@@ -203,55 +204,78 @@ DETOUR_DECL_MEMBER0(CGameClient_ShouldSendMessages, bool)
 	if (!bOriginalResult)
 		return false;
 	if ((CGameClient *)this == g_pCurrentGameClientPtr)
-	{
-#if SOURCE_ENGINE == SE_CSGO
-		//if we in csgo, we should do stuff from SV_ComputeClientPacks here, or server will crash when SV_ComputeClientPacks is called
-		IClient * pClient = (IClient *)((char *)this + 4);
-		int iClient = pClient->GetPlayerSlot();
-		if (g_iCurrentClientIndexInLoop == iClient)
-		{
-			for (int i = 0; i < g_vHookedEdicts.Count(); i++)
-			{
-				edict_t * pEdict = g_vHookedEdicts[i];
-				if (pEdict && !(pEdict->m_fStateFlags & FL_EDICT_CHANGED))
-					pEdict->m_fStateFlags |= FL_EDICT_CHANGED;
-			}
-			if (g_bShouldChangeGameRulesState && g_pGameRulesProxyEdict)
-			{
-				if (!(g_pGameRulesProxyEdict->m_fStateFlags & FL_EDICT_CHANGED))
-					g_pGameRulesProxyEdict->m_fStateFlags |= FL_EDICT_CHANGED;
-			}
-			if (g_bCurrentGameClientCallFwd)
-				g_bSVComputePacksDone = true;
-		}
-#endif
 		return true;
-	}
 #if defined PLATFORM_x32
 	else
 	{
-		int iTemp, iToSet = g_iCurrentClientIndexInLoop - 1;
-		//just set the loop var to needed for us value, some optimization
+		volatile int iToSet = g_iCurrentClientIndexInLoop - 1;
 #if SOURCE_ENGINE == SE_TF2
 #ifdef _WIN32
-		__asm mov iTemp, esi
-		if (iTemp < iToSet)
-			__asm mov esi, iToSet
+		//some little trick to deceive msvc compiler
+		__asm _emit 0x5F
+		__asm _emit 0x5E
+		__asm push edx
+		__asm mov edx, iToSet
+		__asm _emit 0x3B
+		__asm _emit 0xF2
+		__asm jge CompFailed
+		__asm _emit 0x8B
+		__asm _emit 0xF2
+		__asm CompFailed:
+		__asm pop edx
+		__asm _emit 0x56
+		__asm _emit 0x57
 #elif defined __linux__
-		//I hate AT&T syntax
-		asm("movl %%esi, %0" : "=r" (iTemp));
+		volatile int iTemp;
+		asm volatile("movl %%esi, %0" : "=g" (iTemp));
 		if (iTemp < iToSet)
-			asm("movl %0, %%esi" : : "r" (iToSet) : "%esi");
+			asm volatile(
+				"movl %0, %%esi\n\t"
+				"movl %%esi, %%edx\n\t"
+				"addl $84, %%esp\n\t"
+				"popl %%esi\n\t"
+				"pushl %%edx\n\t"
+				"subl $84, %%esp\n\t"
+				: : "g" (iToSet) : "%edx");
 #endif
-#else //CSGO
+#elif SOURCE_ENGINE == SE_CSGO
 #ifdef _WIN32
-		__asm mov iTemp, esi
-		if (iTemp < iToSet)
-			__asm mov esi, iToSet
+		volatile int iEax, iEdi, iEsi;
+			//save registers
+		__asm mov iEdi, edi
+		__asm mov iEsi, esi
+		__asm mov iEax, eax
+		__asm mov eax, ebp
+			//load stack ptr
+			//we need to pop esi and edi to pop ebp register, we don't care about values in these, we also will use them as variables
+		__asm pop esi
+		__asm pop edi
+		__asm mov edi, iToSet
+		__asm mov esp, ebp
+		__asm pop ebp
+			//load needed info and compare
+		__asm mov esi, [ebp-0x7F8] //0x7F8 is an offset of loop variable
+		__asm cmp esi, edi
+		__asm jge CompFailed
+			//good, store our value
+		__asm mov [ebp-0x7F8], edi
+		__asm CompFailed:
+			//push old and restore original registers
+		__asm push ebp
+		__asm mov ebp, eax
+		__asm mov esp, ebp
+		__asm sub esp, 0x10
+		__asm mov esi, iEsi
+		__asm mov edi, iEdi
+		__asm mov eax, iEax
+		__asm push edi
+		__asm push esi
 #elif defined __linux__
-		asm("movl %%edi, %0" : "=r" (iTemp));
+		volatile int iTemp;
+		//we don't need to clubber edi register here, some low level shit
+		asm volatile("movl %%edi, %0" : "=g" (iTemp));
 		if (iTemp < iToSet)
-			asm("movl %0, %%edi" : : "r" (iToSet) : "%edi");
+			asm volatile("movl %0, %%edi" : : "g" (iToSet));
 #endif
 #endif
 	}
@@ -259,16 +283,28 @@ DETOUR_DECL_MEMBER0(CGameClient_ShouldSendMessages, bool)
 	return false;
 }
 
-#if SOURCE_ENGINE != SE_CSGO
+#if defined __linux__
+void __attribute__((__cdecl__)) SV_ComputeClientPacks_ActualCall(int iClientCount, CGameClient ** pClients, CFrameSnapshot * pSnapShot);
+#else
+void __cdecl SV_ComputeClientPacks_ActualCall(int iClientCount, CGameClient ** pClients, CFrameSnapshot * pSnapShot);
+#endif
+
+//the better idea rewrite it with __declspec(naked) for csgo or use __stdcall function as main callback instead of this
 DETOUR_DECL_STATIC3(SV_ComputeClientPacks, void, int, iClientCount, CGameClient **, pClients, CFrameSnapshot *, pSnapShot)
 {
+#if defined _WIN32 && SOURCE_ENGINE == SE_CSGO
+	//so, here it is __userpurge call, we need manually get our arguments
+	__asm mov iClientCount, ecx
+	__asm mov pClients, edx
+	__asm mov pSnapShot, ebx
+#endif
 	g_bSVComputePacksDone = false;
-	if (!iClientCount || pClients[0] != g_pCurrentGameClientPtr)
-		return DETOUR_STATIC_CALL(SV_ComputeClientPacks)(iClientCount, pClients, pSnapShot);
+	if (!iClientCount || !g_bSendSnapshots || pClients[0] != g_pCurrentGameClientPtr)
+		return SV_ComputeClientPacks_ActualCall(iClientCount, pClients, pSnapShot);
 	IClient * pClient = (IClient *)((char *)pClients[0] + 4);
 	int iClient = pClient->GetPlayerSlot();
 	if (g_iCurrentClientIndexInLoop != iClient)
-		return DETOUR_STATIC_CALL(SV_ComputeClientPacks)(iClientCount, pClients, pSnapShot);
+		return SV_ComputeClientPacks_ActualCall(iClientCount, pClients, pSnapShot);
 	//Also here we can change actual values for each client! But for what?
 	//Just mark all hooked edicts as changed to bypass check in SV_PackEntity!
 	for (int i = 0; i < g_vHookedEdicts.Count(); i++)
@@ -284,6 +320,28 @@ DETOUR_DECL_STATIC3(SV_ComputeClientPacks, void, int, iClientCount, CGameClient 
 	}
 	if (g_bCurrentGameClientCallFwd)
 		g_bSVComputePacksDone = true;
+	return SV_ComputeClientPacks_ActualCall(iClientCount, pClients, pSnapShot);
+}
+
+#if defined _WIN32 && SOURCE_ENGINE == SE_CSGO
+__declspec(naked) void __cdecl SV_ComputeClientPacks_ActualCall(int iClientCount, CGameClient ** pClients, CFrameSnapshot * pSnapShot)
+{
+	//we do not use ebp here
+	__asm mov edx, pClients //we don't care about values in edx & ecx
+	__asm mov ecx, iClientCount
+	__asm mov ebx, pSnapShot
+	__asm push ebx
+	__asm call SV_ComputeClientPacks_Actual
+	__asm add esp, 0x4 //restore our stack
+	__asm retn
+}
+#else
+#ifdef __linux__
+void __attribute__((__cdecl__)) SV_ComputeClientPacks_ActualCall(int iClientCount, CGameClient ** pClients, CFrameSnapshot * pSnapShot)
+#else
+void __cdecl SV_ComputeClientPacks_ActualCall(int iClientCount, CGameClient ** pClients, CFrameSnapshot * pSnapShot)
+#endif
+{
 	return DETOUR_STATIC_CALL(SV_ComputeClientPacks)(iClientCount, pClients, pSnapShot);
 }
 #endif
@@ -501,9 +559,7 @@ bool SendProxyManager::SDK_OnLoad(char *error, size_t maxlength, bool late)
 	bool bDetoursInited = false;
 	CREATE_DETOUR(CGameServer_SendClientMessages, "CGameServer::SendClientMessages", bDetoursInited);
 	CREATE_DETOUR(CGameClient_ShouldSendMessages, "CGameClient::ShouldSendMessages", bDetoursInited);
-#if SOURCE_ENGINE != SE_CSGO
 	CREATE_DETOUR_STATIC(SV_ComputeClientPacks, "SV_ComputeClientPacks", bDetoursInited);
-#endif
 	
 	if (!bDetoursInited)
 	{
@@ -551,9 +607,7 @@ void SendProxyManager::SDK_OnUnload()
 
 	DESTROY_DETOUR(CGameServer_SendClientMessages);
 	DESTROY_DETOUR(CGameClient_ShouldSendMessages);
-#if SOURCE_ENGINE != SE_CSGO
 	DESTROY_DETOUR(SV_ComputeClientPacks);
-#endif
 	
 	gameconfs->CloseGameConfigFile(g_pGameConf);
 	gameconfs->CloseGameConfigFile(g_pGameConfSDKTools);
@@ -839,12 +893,12 @@ bool CallFloatGamerules(SendPropHookGamerules hook, float *ret)
 	if (!g_bSVComputePacksDone)
 		return false;
 	
+	AUTO_LOCK_FM(g_WorkMutex);
+
 	switch (hook.iCallbackType)
 	{
 		case CallBackType::Callback_PluginFunction:
 		{
-			AUTO_LOCK_FM(g_WorkMutex);
-
 			IPluginFunction *callback = (IPluginFunction *)hook.pCallback;
 			float value = *ret;
 			cell_t result = Pl_Continue;

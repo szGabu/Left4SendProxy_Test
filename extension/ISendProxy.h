@@ -37,8 +37,8 @@
 #include "dt_send.h"
 #include "server_class.h"
 
-#define SMINTERFACE_SENDPROXY_NAME		"ISendProxyInterface132"
-#define SMINTERFACE_SENDPROXY_VERSION	0x132
+#define SMINTERFACE_SENDPROXY_NAME		"ISendProxyInterface133"
+#define SMINTERFACE_SENDPROXY_VERSION	0x133
 
 class CBaseEntity;
 class CBasePlayer;

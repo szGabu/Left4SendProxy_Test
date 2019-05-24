@@ -29,23 +29,23 @@
  * Version: $Id$
  */
 
-#ifndef _INCLUDE_SOURCEMOD_EXTENSION_PROPER_H_
-#define _INCLUDE_SOURCEMOD_EXTENSION_PROPER_H_
+#ifndef _EXTENSION_H_INC_
+#define _EXTENSION_H_INC_
 
  /*
 	TODO:
 		Implement interface for prop change hooks & add natives
 		Allow multiple hooks for prop on same entity (probably use delegate for this?)
-		More optimizations (maybe try to fix crashes and use threads?) if possible! =D
  */
 
 #include "smsdk_ext.h"
+#include <string>
+#include <stdint.h>
 #include "convar.h"
 #include "dt_send.h"
 #include "server_class.h"
-#include <string>
-#include <stdint.h>
 #include "ISendProxy.h"
+#include <eiface.h>
 #include <ISDKHooks.h>
 #include <ISDKTools.h>
 
@@ -58,19 +58,11 @@
 		return false; \
 	}
 
+class IServerGameEnts;
+
 void GlobalProxy(const SendProp *pProp, const void *pStructBase, const void* pData, DVariant *pOut, int iElement, int objectID);
 void GlobalProxyGamerules(const SendProp *pProp, const void *pStructBase, const void* pData, DVariant *pOut, int iElement, int objectID);
 bool IsPropValid(SendProp *, PropType);
-
-template <class T, class A = CUtlMemory<T>>
-class CModifiedUtlVector : public CUtlVector<T, A>
-{
-public:
-	CModifiedUtlVector(int growSize = 0, int initSize = 0) : CUtlVector<T, A>(growSize, initSize) {}
-	CModifiedUtlVector(T * pMemory, int allocationCount, int numElements = 0) : CUtlVector<T, A>(pMemory, allocationCount, numElements) {}
-	//allow copy constructor
-	CModifiedUtlVector(CModifiedUtlVector const& vec) { *this = vec; } //= is overloaded
-};
 
 struct ListenerCallbackInfo
 {
@@ -81,6 +73,14 @@ struct ListenerCallbackInfo
 
 struct SendPropHook
 {
+	SendPropHook() { vListeners = new CUtlVector<ListenerCallbackInfo>(); }
+	SendPropHook(const SendPropHook & rObj)
+	{
+		memcpy(this, &rObj, sizeof(SendPropHook));
+		vListeners = new CUtlVector<ListenerCallbackInfo>();
+		*vListeners = *rObj.vListeners;
+	}
+	~SendPropHook() { delete vListeners; }
 	void *									pCallback;
 	CallBackType							iCallbackType;
 	SendProp *								pVar;
@@ -91,11 +91,19 @@ struct SendPropHook
 	int										Offset;
 	int										Element{0};
 	IExtensionInterface *					pExtensionAPI{nullptr};
-	CModifiedUtlVector<ListenerCallbackInfo>	vListeners;
+	CUtlVector<ListenerCallbackInfo> *		vListeners;
 };
 
 struct SendPropHookGamerules
 {
+	SendPropHookGamerules() { vListeners = new CUtlVector<ListenerCallbackInfo>(); }
+	SendPropHookGamerules(const SendPropHookGamerules & rObj)
+	{
+		memcpy(this, &rObj, sizeof(SendPropHookGamerules));
+		vListeners = new CUtlVector<ListenerCallbackInfo>();
+		*vListeners = *rObj.vListeners;
+	}
+	~SendPropHookGamerules() { delete vListeners; }
 	void *									pCallback;
 	CallBackType							iCallbackType;
 	SendProp *								pVar;
@@ -104,7 +112,7 @@ struct SendPropHookGamerules
 	int										Offset;
 	int										Element{0};
 	IExtensionInterface *					pExtensionAPI{nullptr};
-	CModifiedUtlVector<ListenerCallbackInfo>	vListeners;
+	CUtlVector<ListenerCallbackInfo> *		vListeners;
 };
 
 struct PropChangeHook
@@ -167,7 +175,6 @@ public:
 };
 
 extern SendProxyManager g_SendProxyManager;
-extern CGlobalVars * g_pGlobals;
 extern IServerGameEnts * gameents;
 extern CUtlVector<SendPropHook> g_Hooks;
 extern CUtlVector<SendPropHookGamerules> g_HooksGamerules;
@@ -177,4 +184,4 @@ extern const char * g_szGameRulesProxy;
 extern int g_iEdictCount;
 extern ISDKTools * g_pSDKTools;
 
-#endif // _INCLUDE_SOURCEMOD_EXTENSION_PROPER_H_
+#endif // _EXTENSION_H_INC_
