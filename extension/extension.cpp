@@ -46,7 +46,7 @@
 
 #include "CDetour/detours.h"
 #include "extension.h"
-#include "interface.h"
+#include "interfaceimpl.h"
 #include "natives.h"
 
 //path: hl2sdk-<your sdk here>/public/<include>.h, "../public/" included to prevent compile errors due wrong directory scanning by compiler on my computer, and I'm too lazy to find where I can change that =D
@@ -441,7 +441,7 @@ void Hook_GameFrame(bool simulating)
 					}
 					break;
 				}
-				default: rootconsole->ConsolePrint(__FUNCTION__ " at line %i: SendProxy report: Unknown prop type (%s).", __LINE__, g_ChangeHooks[i].pVar->GetName());
+				default: rootconsole->ConsolePrint("%s: SendProxy report: Unknown prop type (%s).", __func__, g_ChangeHooks[i].pVar->GetName());
 			}
 		}
 		if (!g_pGameRules && g_pSDKTools)
@@ -499,7 +499,7 @@ void Hook_GameFrame(bool simulating)
 					}
 					break;
 				}
-				default: rootconsole->ConsolePrint(__FUNCTION__ " at line %i: SendProxy report: Unknown prop type (%s).", __LINE__, g_ChangeHooksGamerules[i].pVar->GetName());
+				default: rootconsole->ConsolePrint("%s: SendProxy report: Unknown prop type (%s).", __func__, g_ChangeHooksGamerules[i].pVar->GetName());
 			}
 		}
 	}
@@ -699,15 +699,16 @@ void SendProxyManager::OnPluginUnloaded(IPlugin * plugin)
 
 bool SendProxyManager::AddHookToList(SendPropHook hook)
 {
-	//Need to make sure this prop isn't already hooked for this entity
+	//Need to make sure this prop isn't already hooked for this entity - we don't care anymore
 	bool bEdictHooked = false;
 	for (int i = 0; i < g_Hooks.Count(); i++)
 	{
 		if (g_Hooks[i].objectID == hook.objectID)
 		{
-			if (g_Hooks[i].pVar == hook.pVar)
-				return false;
-			else
+			//we don't care anymore
+			//if (g_Hooks[i].pVar == hook.pVar)
+			//	return false;
+			//else
 				bEdictHooked = true;
 		}
 	}
@@ -719,12 +720,12 @@ bool SendProxyManager::AddHookToList(SendPropHook hook)
 
 bool SendProxyManager::AddHookToListGamerules(SendPropHookGamerules hook)
 {
-	//Need to make sure this prop isn't already hooked for this entity
-	for (int i = 0; i < g_HooksGamerules.Count(); i++)
+	//Need to make sure this prop isn't already hooked for this entity - we don't care anymore
+	/*for (int i = 0; i < g_HooksGamerules.Count(); i++)
 	{
 		if (g_HooksGamerules[i].pVar == hook.pVar)
 			return false;
-	}
+	}*/
 	g_HooksGamerules.AddToTail(hook);
 	return true;
 }
@@ -1097,12 +1098,12 @@ bool CallString(SendPropHook hook, char **ret)
 	
 	AUTO_LOCK_FM(g_WorkMutex);
 
+	static char value[4096];
 	switch (hook.sCallbackInfo.iCallbackType)
 	{
 		case CallBackType::Callback_PluginFunction:
 		{
 			IPluginFunction *callback = (IPluginFunction *)hook.sCallbackInfo.pCallback;
-			char * value = new char[4096];
 			strncpy(value, *ret, 4096);
 			cell_t result = Pl_Continue;
 			callback->PushCell(hook.objectID);
@@ -1121,12 +1122,11 @@ bool CallString(SendPropHook hook, char **ret)
 		case CallBackType::Callback_CPPCallbackInterface:
 		{
 			ISendProxyCallbacks * pCallbacks = (ISendProxyCallbacks *)hook.sCallbackInfo.pCallback;
-			char * cValue = new char[4096];
-			strncpy(cValue, *ret, 4096);
-			bool bChange = pCallbacks->OnEntityPropProxyFunctionCalls(gameents->EdictToBaseEntity(hook.pEnt), hook.pVar, (CBasePlayer *)gamehelpers->ReferenceToEntity(g_iCurrentClientIndexInLoop + 1), (void *)cValue, hook.PropType, hook.Element);
+			strncpy(value, *ret, 4096);
+			bool bChange = pCallbacks->OnEntityPropProxyFunctionCalls(gameents->EdictToBaseEntity(hook.pEnt), hook.pVar, (CBasePlayer *)gamehelpers->ReferenceToEntity(g_iCurrentClientIndexInLoop + 1), (void *)value, hook.PropType, hook.Element);
 			if (bChange)
 			{
-				*ret = cValue;
+				*ret = value;
 				return true;
 			}
 			break;
@@ -1142,6 +1142,7 @@ bool CallStringGamerules(SendPropHookGamerules hook, char **ret)
 	
 	AUTO_LOCK_FM(g_WorkMutex);
 
+	static char value[4096];
 	switch (hook.sCallbackInfo.iCallbackType)
 	{
 		case CallBackType::Callback_PluginFunction:
@@ -1153,7 +1154,6 @@ bool CallStringGamerules(SendPropHookGamerules hook, char **ret)
 			}
 			
 			IPluginFunction *callback = (IPluginFunction *)hook.sCallbackInfo.pCallback;
-			char * value = new char[4096];
 			strncpy(value, *ret, 4096);
 			cell_t result = Pl_Continue;
 			callback->PushString(hook.pVar->GetName());
@@ -1174,12 +1174,11 @@ bool CallStringGamerules(SendPropHookGamerules hook, char **ret)
 			if(!pGamerules)
 				return false;
 			ISendProxyCallbacks * pCallbacks = (ISendProxyCallbacks *)hook.sCallbackInfo.pCallback;
-			char * cValue = new char[4096];
-			strncpy(cValue, *ret, 4096);
-			bool bChange = pCallbacks->OnGamerulesPropProxyFunctionCalls(hook.pVar, (CBasePlayer *)gamehelpers->ReferenceToEntity(g_iCurrentClientIndexInLoop + 1), (void *)cValue, hook.PropType, hook.Element);
+			strncpy(value, *ret, 4096);
+			bool bChange = pCallbacks->OnGamerulesPropProxyFunctionCalls(hook.pVar, (CBasePlayer *)gamehelpers->ReferenceToEntity(g_iCurrentClientIndexInLoop + 1), (void *)value, hook.PropType, hook.Element);
 			if (bChange)
 			{
-				*ret = cValue;
+				*ret = value;
 				return true;
 			}
 			break;
@@ -1294,6 +1293,7 @@ bool CallVectorGamerules(SendPropHookGamerules hook, Vector &vec)
 void GlobalProxy(const SendProp *pProp, const void *pStructBase, const void * pData, DVariant *pOut, int iElement, int objectID)
 {
 	edict_t * pEnt = gamehelpers->EdictOfIndex(objectID);
+	bool bHandled = false;
 	for (int i = 0; i < g_Hooks.Count(); i++)
 	{
 		if (g_Hooks[i].objectID == objectID && g_Hooks[i].pVar == pProp && pEnt == g_Hooks[i].pEnt)
@@ -1307,13 +1307,14 @@ void GlobalProxy(const SendProp *pProp, const void *pStructBase, const void * pD
 					if (CallInt(g_Hooks[i], &result))
 					{
 						long data = result;
-
 						g_Hooks[i].pRealProxy(pProp, pStructBase, &data, pOut, iElement, objectID);
-						return;
-					} else {
-						g_Hooks[i].pRealProxy(pProp, pStructBase, pData, pOut, iElement, objectID);
-						return;
 					}
+					else
+					{
+						g_Hooks[i].pRealProxy(pProp, pStructBase, pData, pOut, iElement, objectID);
+					}
+					bHandled = true;
+					continue;
 				}
 				case PropType::Prop_Float:
 				{
@@ -1322,17 +1323,21 @@ void GlobalProxy(const SendProp *pProp, const void *pStructBase, const void * pD
 					if (CallFloat(g_Hooks[i], &result))
 					{
 						g_Hooks[i].pRealProxy(pProp, pStructBase, &result, pOut, iElement, objectID);
-						return;
-					} else {
-						g_Hooks[i].pRealProxy(pProp, pStructBase, pData, pOut, iElement, objectID);
-						return;
 					}
+					else
+					{
+						g_Hooks[i].pRealProxy(pProp, pStructBase, pData, pOut, iElement, objectID);
+					}
+					bHandled = true;
+					continue;
 				}
 				case PropType::Prop_String:
 				{
-					char * result = (char *)pData;
+					const char * result = *(char **)pData;
+					if (!result) //there can be null;
+						result = "";
 
-					if (CallString(g_Hooks[i], &result))
+					if (CallString(g_Hooks[i], const_cast<char **>(&result)))
 					{
 						g_Hooks[i].pRealProxy(pProp, pStructBase, result, pOut, iElement, objectID);
 					}
@@ -1340,8 +1345,8 @@ void GlobalProxy(const SendProp *pProp, const void *pStructBase, const void * pD
 					{
 						g_Hooks[i].pRealProxy(pProp, pStructBase, pData, pOut, iElement, objectID);
 					}
-					if (result != (char *)pData)
-						delete[] result;
+					bHandled = true;
+					continue;
 				}
 				case PropType::Prop_Vector:
 				{
@@ -1350,32 +1355,38 @@ void GlobalProxy(const SendProp *pProp, const void *pStructBase, const void * pD
 					if (CallVector(g_Hooks[i], result))
 					{
 						g_Hooks[i].pRealProxy(pProp, pStructBase, &result, pOut, iElement, objectID);
-						return;
-					} else {
-						g_Hooks[i].pRealProxy(pProp, pStructBase, pData, pOut, iElement, objectID);
-						return;
 					}
+					else
+					{
+						g_Hooks[i].pRealProxy(pProp, pStructBase, pData, pOut, iElement, objectID);
+					}
+					bHandled = true;
+					continue;
 				}
-				default: rootconsole->ConsolePrint(__FUNCTION__ " at line %i: SendProxy report: Unknown prop type (%s).", __LINE__, g_Hooks[i].pVar->GetName());
+				default: rootconsole->ConsolePrint("%s: SendProxy report: Unknown prop type (%s).", __func__, g_Hooks[i].pVar->GetName());
 			}
 		}
 	}
-	//perhaps we aren't hooked, but we can still find the real proxy for this prop
-	for (int i = 0; i < g_Hooks.Count(); i++)
+	if (!bHandled)
 	{
-		if (g_Hooks[i].pVar == pProp)
+		//perhaps we aren't hooked, but we can still find the real proxy for this prop
+		for (int i = 0; i < g_Hooks.Count(); i++)
 		{
-			g_Hooks[i].pRealProxy(pProp, pStructBase, pData, pOut, iElement, objectID);
-			return;
+			if (g_Hooks[i].pVar == pProp)
+			{
+				g_Hooks[i].pRealProxy(pProp, pStructBase, pData, pOut, iElement, objectID);
+				return;
+			}
 		}
+		g_pSM->LogError(myself, "CRITICAL: Proxy for unmanaged entity %d called for prop %s", objectID, pProp->GetName());
 	}
-	g_pSM->LogError(myself, "CRITICAL: Proxy for unmanaged entity %d called for prop %s", objectID, pProp->GetName());
 }
 
 void GlobalProxyGamerules(const SendProp *pProp, const void *pStructBase, const void * pData, DVariant *pOut, int iElement, int objectID)
 {
 	if (!g_bShouldChangeGameRulesState)
 		g_bShouldChangeGameRulesState = true; //If this called once, so, the props wants to be sent at this time, and we should do this for all clients!
+	bool bHandled = false;
 	for (int i = 0; i < g_HooksGamerules.Count(); i++)
 	{
 		if (g_HooksGamerules[i].pVar == pProp)
@@ -1389,15 +1400,14 @@ void GlobalProxyGamerules(const SendProp *pProp, const void *pStructBase, const 
 					if (CallIntGamerules(g_HooksGamerules[i], &result))
 					{
 						long data = result;
-
 						g_HooksGamerules[i].pRealProxy(pProp, pStructBase, &data, pOut, iElement, objectID);
-						return;
 					}
 					else
 					{
 						g_HooksGamerules[i].pRealProxy(pProp, pStructBase, pData, pOut, iElement, objectID);
-						return;
 					}
+					bHandled = true;
+					continue;
 				}
 				case PropType::Prop_Float:
 				{
@@ -1406,19 +1416,21 @@ void GlobalProxyGamerules(const SendProp *pProp, const void *pStructBase, const 
 					if (CallFloatGamerules(g_HooksGamerules[i], &result))
 					{
 						g_HooksGamerules[i].pRealProxy(pProp, pStructBase, &result, pOut, iElement, objectID);
-						return;
 					} 
 					else
 					{
 						g_HooksGamerules[i].pRealProxy(pProp, pStructBase, pData, pOut, iElement, objectID);
-						return;
 					}
+					bHandled = true;
+					continue;
 				}
 				case PropType::Prop_String:
 				{
-					char * result = (char *)pData;
+					const char * result = *(char **)pData; //We need to use const because of C++11 restriction
+					if (!result) //there can be null;
+						result = "";
 
-					if (CallStringGamerules(g_HooksGamerules[i], &result))
+					if (CallStringGamerules(g_HooksGamerules[i], const_cast<char **>(&result)))
 					{
 						g_HooksGamerules[i].pRealProxy(pProp, pStructBase, result, pOut, iElement, objectID);
 					}
@@ -1426,8 +1438,8 @@ void GlobalProxyGamerules(const SendProp *pProp, const void *pStructBase, const 
 					{
 						g_HooksGamerules[i].pRealProxy(pProp, pStructBase, pData, pOut, iElement, objectID);
 					}
-					if (result != (char *)pData)
-						delete[] result;
+					bHandled = true;
+					continue;
 				}
 				case PropType::Prop_Vector:
 				{
@@ -1436,32 +1448,32 @@ void GlobalProxyGamerules(const SendProp *pProp, const void *pStructBase, const 
 					if (CallVectorGamerules(g_HooksGamerules[i], result))
 					{
 						g_HooksGamerules[i].pRealProxy(pProp, pStructBase, &result, pOut, iElement, objectID);
-						return;
 					}
 					else
 					{
 						g_HooksGamerules[i].pRealProxy(pProp, pStructBase, pData, pOut, iElement, objectID);
-						return;
 					}
+					bHandled = true;
+					continue;
 				}
-				default: rootconsole->ConsolePrint(__FUNCTION__ " at line %i: SendProxy report: Unknown prop type (%s).", __LINE__, g_HooksGamerules[i].pVar->GetName());
+				default: rootconsole->ConsolePrint("%s: SendProxy report: Unknown prop type (%s).", __func__, g_HooksGamerules[i].pVar->GetName());
 			}
 		}
 	}
-	//perhaps we aren't hooked, but we can still find the real proxy for this prop
-	for (int i = 0; i < g_HooksGamerules.Count(); i++)
+	if (!bHandled)
 	{
-		if (g_HooksGamerules[i].pVar == pProp)
+		//perhaps we aren't hooked, but we can still find the real proxy for this prop
+		for (int i = 0; i < g_HooksGamerules.Count(); i++)
 		{
-			g_Hooks[i].pRealProxy(pProp, pStructBase, pData, pOut, iElement, objectID);
-			return;
+			if (g_HooksGamerules[i].pVar == pProp)
+			{
+				g_Hooks[i].pRealProxy(pProp, pStructBase, pData, pOut, iElement, objectID);
+				return;
+			}
 		}
+		g_pSM->LogError(myself, "CRITICAL: Proxy for unmanaged gamerules called for prop %s", pProp->GetName());
 	}
-	g_pSM->LogError(myself, "CRITICAL: Proxy for unmanaged gamerules called for prop %s", pProp->GetName());
-	
 }
-//PropChanged(entity, const String:propname[], const String:oldValue[], const String:newValue[])
-//SendProxy_HookPropChange(entity, const String:name[], PropChanged:callback)
 
 //help
 

@@ -9,7 +9,7 @@ sourceFiles = [
   'CDetour/detours.cpp',
   'asm/asm.c',
   'natives.cpp',
-  'interface.cpp'
+  'interfaceimpl.cpp'
 ]
 
 ###############
