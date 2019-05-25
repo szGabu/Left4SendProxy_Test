@@ -1339,7 +1339,7 @@ void GlobalProxy(const SendProp *pProp, const void *pStructBase, const void * pD
 
 					if (CallString(g_Hooks[i], const_cast<char **>(&result)))
 					{
-						g_Hooks[i].pRealProxy(pProp, pStructBase, result, pOut, iElement, objectID);
+						g_Hooks[i].pRealProxy(pProp, pStructBase, &result, pOut, iElement, objectID);
 					}
 					else
 					{
@@ -1432,7 +1432,7 @@ void GlobalProxyGamerules(const SendProp *pProp, const void *pStructBase, const 
 
 					if (CallStringGamerules(g_HooksGamerules[i], const_cast<char **>(&result)))
 					{
-						g_HooksGamerules[i].pRealProxy(pProp, pStructBase, result, pOut, iElement, objectID);
+						g_HooksGamerules[i].pRealProxy(pProp, pStructBase, &result, pOut, iElement, objectID);
 					}
 					else
 					{
