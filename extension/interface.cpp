@@ -169,7 +169,7 @@ void CallListenersForHookID(int iHookID)
 	for (int i = 0; i < Info.vListeners->Count(); i++)
 	{
 		ListenerCallbackInfo sInfo = (*Info.vListeners)[i];
-		sInfo.m_pCallBack->OnEntityPropHookRemoved(gameents->EdictToBaseEntity(Info.pEnt), Info.pVar, Info.PropType, Info.iCallbackType, Info.pCallback);
+		sInfo.m_pCallBack->OnEntityPropHookRemoved(gameents->EdictToBaseEntity(Info.pEnt), Info.pVar, Info.PropType, Info.sCallbackInfo.iCallbackType, Info.sCallbackInfo.pCallback);
 	}
 }
 
@@ -179,7 +179,7 @@ void CallListenersForHookIDGamerules(int iHookID)
 	for (int i = 0; i < Info.vListeners->Count(); i++)
 	{
 		ListenerCallbackInfo sInfo = (*Info.vListeners)[i];
-		sInfo.m_pCallBack->OnGamerulesPropHookRemoved(Info.pVar, Info.PropType, Info.iCallbackType, Info.pCallback);
+		sInfo.m_pCallBack->OnGamerulesPropHookRemoved(Info.pVar, Info.PropType, Info.sCallbackInfo.iCallbackType, Info.sCallbackInfo.pCallback);
 	}
 }
 
@@ -202,8 +202,8 @@ bool SendProxyManagerInterfaceImpl::HookProxy(IExtension * pExt, SendProp * pPro
 	
 	SendPropHook hook;
 	hook.objectID = gamehelpers->IndexOfEdict(pEdict);
-	hook.pCallback = pCallback;
-	hook.iCallbackType = iCallbackType;
+	hook.sCallbackInfo.pCallback = pCallback;
+	hook.sCallbackInfo.iCallbackType = iCallbackType;
 	hook.PropType = iType;
 	hook.pEnt = pEdict;
 	hook.pVar = pProp;
@@ -257,8 +257,8 @@ bool SendProxyManagerInterfaceImpl::HookProxyGamerules(IExtension * pExt, SendPr
 		return false;
 	
 	SendPropHookGamerules hook;
-	hook.pCallback = pCallback;
-	hook.iCallbackType = iCallbackType;
+	hook.sCallbackInfo.pCallback = pCallback;
+	hook.sCallbackInfo.iCallbackType = iCallbackType;
 	bool bHookedAlready = false;
 	for (int i = 0; i < g_HooksGamerules.Count(); i++)
 	{
@@ -276,7 +276,6 @@ bool SendProxyManagerInterfaceImpl::HookProxyGamerules(IExtension * pExt, SendPr
 	hook.pExtensionAPI = pExt->GetAPI();
 	sm_sendprop_info_t info;
 	gamehelpers->FindSendPropInfo(g_szGameRulesProxy, pProp->GetName(), &info);
-	hook.Offset = info.actual_offset;
 	
 	//if this prop has been hooked already, don't set the proxy again
 	HookExtensionUnload(pExt);
@@ -320,7 +319,7 @@ bool SendProxyManagerInterfaceImpl::UnhookProxy(IExtension * pExt, const char * 
 		return false;
 	edict_t * pEdict = gameents->BaseEntityToEdict(pEntity);
 	for (int i = 0; i < g_Hooks.Count(); i++)
-		if (g_Hooks[i].pExtensionAPI == pExt->GetAPI() /*Allow to extension remove only its hooks*/ && pEdict == g_Hooks[i].pEnt && g_Hooks[i].iCallbackType == iCallbackType && !strcmp(g_Hooks[i].pVar->GetName(), pProp) && pCallback == g_Hooks[i].pCallback)
+		if (g_Hooks[i].pExtensionAPI == pExt->GetAPI() /*Allow to extension remove only its hooks*/ && pEdict == g_Hooks[i].pEnt && g_Hooks[i].sCallbackInfo.iCallbackType == iCallbackType && !strcmp(g_Hooks[i].pVar->GetName(), pProp) && pCallback == g_Hooks[i].sCallbackInfo.pCallback)
 		{
 			g_SendProxyManager.UnhookProxy(i);
 			UnhookExtensionUnload(pExt);
@@ -340,7 +339,7 @@ bool SendProxyManagerInterfaceImpl::UnhookProxyGamerules(IExtension * pExt, cons
 	if (!pProp || !*pProp)
 		return false;
 	for (int i = 0; i < g_HooksGamerules.Count(); i++)
-		if (g_HooksGamerules[i].pExtensionAPI == pExt->GetAPI() /*Allow to extension remove only its hooks*/ && g_HooksGamerules[i].iCallbackType == iCallbackType && !strcmp(g_HooksGamerules[i].pVar->GetName(), pProp) && pCallback == g_HooksGamerules[i].pCallback)
+		if (g_HooksGamerules[i].pExtensionAPI == pExt->GetAPI() /*Allow to extension remove only its hooks*/ && g_HooksGamerules[i].sCallbackInfo.iCallbackType == iCallbackType && !strcmp(g_HooksGamerules[i].pVar->GetName(), pProp) && pCallback == g_HooksGamerules[i].sCallbackInfo.pCallback)
 		{
 			g_SendProxyManager.UnhookProxyGamerules(i);
 			UnhookExtensionUnload(pExt);
@@ -361,7 +360,7 @@ bool SendProxyManagerInterfaceImpl::AddUnhookListener(IExtension * pExt, const c
 		return false;
 	edict_t * pEdict = gameents->BaseEntityToEdict(pEntity);
 	for (int i = 0; i < g_Hooks.Count(); i++)
-		if (pEdict == g_Hooks[i].pEnt && g_Hooks[i].iCallbackType == iCallbackType && !strcmp(g_Hooks[i].pVar->GetName(), pProp) && pCallback == g_Hooks[i].pCallback)
+		if (pEdict == g_Hooks[i].pEnt && g_Hooks[i].sCallbackInfo.iCallbackType == iCallbackType && !strcmp(g_Hooks[i].pVar->GetName(), pProp) && pCallback == g_Hooks[i].sCallbackInfo.pCallback)
 		{
 			ListenerCallbackInfo info;
 			info.m_pExt = pExt;
@@ -385,7 +384,7 @@ bool SendProxyManagerInterfaceImpl::AddUnhookListenerGamerules(IExtension * pExt
 	if (!pProp || !*pProp)
 		return false;
 	for (int i = 0; i < g_HooksGamerules.Count(); i++)
-		if (g_HooksGamerules[i].iCallbackType == iCallbackType && !strcmp(g_HooksGamerules[i].pVar->GetName(), pProp) && pCallback == g_HooksGamerules[i].pCallback)
+		if (g_HooksGamerules[i].sCallbackInfo.iCallbackType == iCallbackType && !strcmp(g_HooksGamerules[i].pVar->GetName(), pProp) && pCallback == g_HooksGamerules[i].sCallbackInfo.pCallback)
 		{
 			ListenerCallbackInfo info;
 			info.m_pExt = pExt;
@@ -411,7 +410,7 @@ bool SendProxyManagerInterfaceImpl::RemoveUnhookListener(IExtension * pExt, cons
 	
 	edict_t * pEdict = gameents->BaseEntityToEdict(pEntity);
 	for (int i = 0; i < g_Hooks.Count(); i++)
-		if (g_Hooks[i].pEnt == pEdict && g_Hooks[i].iCallbackType == iCallbackType && !strcmp(g_Hooks[i].pVar->GetName(), pProp) && pCallback == g_Hooks[i].pCallback)
+		if (g_Hooks[i].pEnt == pEdict && g_Hooks[i].sCallbackInfo.iCallbackType == iCallbackType && !strcmp(g_Hooks[i].pVar->GetName(), pProp) && pCallback == g_Hooks[i].sCallbackInfo.pCallback)
 		{
 			for (int j = 0; j < g_Hooks[i].vListeners->Count(); j++)
 			{
@@ -439,7 +438,7 @@ bool SendProxyManagerInterfaceImpl::RemoveUnhookListenerGamerules(IExtension * p
 		return false;
 	
 	for (int i = 0; i < g_HooksGamerules.Count(); i++)
-		if (g_HooksGamerules[i].iCallbackType == iCallbackType && !strcmp(g_HooksGamerules[i].pVar->GetName(), pProp) && pCallback == g_HooksGamerules[i].pCallback)
+		if (g_HooksGamerules[i].sCallbackInfo.iCallbackType == iCallbackType && !strcmp(g_HooksGamerules[i].pVar->GetName(), pProp) && pCallback == g_HooksGamerules[i].sCallbackInfo.pCallback)
 		{
 			for (int j = 0; j < g_HooksGamerules[i].vListeners->Count(); j++)
 			{
@@ -479,8 +478,8 @@ bool SendProxyManagerInterfaceImpl::HookProxyArray(IExtension * pExt, SendProp *
 	
 	SendPropHook hook;
 	hook.objectID = gamehelpers->IndexOfEdict(pEdict);
-	hook.pCallback = pCallback;
-	hook.iCallbackType = iCallbackType;
+	hook.sCallbackInfo.pCallback = pCallback;
+	hook.sCallbackInfo.iCallbackType = iCallbackType;
 	hook.PropType = iType;
 	hook.pEnt = pEdict;
 	hook.pVar = pPropElem;
@@ -543,8 +542,8 @@ bool SendProxyManagerInterfaceImpl::HookProxyArrayGamerules(IExtension * pExt, S
 		return false;
 	
 	SendPropHookGamerules hook;
-	hook.pCallback = pCallback;
-	hook.iCallbackType = iCallbackType;
+	hook.sCallbackInfo.pCallback = pCallback;
+	hook.sCallbackInfo.iCallbackType = iCallbackType;
 	bool bHookedAlready = false;
 	for (int i = 0; i < g_HooksGamerules.Count(); i++)
 	{
@@ -562,7 +561,6 @@ bool SendProxyManagerInterfaceImpl::HookProxyArrayGamerules(IExtension * pExt, S
 	hook.pExtensionAPI = pExt->GetAPI();
 	sm_sendprop_info_t info;
 	gamehelpers->FindSendPropInfo(g_szGameRulesProxy, pProp->GetName(), &info);
-	hook.Offset = info.actual_offset;
 	hook.Element = iElement;
 	
 	//if this prop has been hooked already, don't set the proxy again
@@ -607,7 +605,7 @@ bool SendProxyManagerInterfaceImpl::UnhookProxyArray(IExtension * pExt, const ch
 		return false;
 	edict_t * pEdict = gameents->BaseEntityToEdict(pEntity);
 	for (int i = 0; i < g_Hooks.Count(); i++)
-		if (g_Hooks[i].pExtensionAPI == pExt->GetAPI() /*Allow to extension remove only its hooks*/ && g_Hooks[i].Element == iElement && pEdict == g_Hooks[i].pEnt && g_Hooks[i].iCallbackType == iCallbackType && !strcmp(g_Hooks[i].pVar->GetName(), pProp) && pCallback == g_Hooks[i].pCallback)
+		if (g_Hooks[i].pExtensionAPI == pExt->GetAPI() /*Allow to extension remove only its hooks*/ && g_Hooks[i].Element == iElement && pEdict == g_Hooks[i].pEnt && g_Hooks[i].sCallbackInfo.iCallbackType == iCallbackType && !strcmp(g_Hooks[i].pVar->GetName(), pProp) && pCallback == g_Hooks[i].sCallbackInfo.pCallback)
 		{
 			g_SendProxyManager.UnhookProxy(i);
 			UnhookExtensionUnload(pExt);
@@ -627,7 +625,7 @@ bool SendProxyManagerInterfaceImpl::UnhookProxyArrayGamerules(IExtension * pExt,
 	if (!pProp || !*pProp)
 		return false;
 	for (int i = 0; i < g_HooksGamerules.Count(); i++)
-		if (g_HooksGamerules[i].pExtensionAPI == pExt->GetAPI() /*Allow to extension remove only its hooks*/ && g_HooksGamerules[i].Element == iElement && g_HooksGamerules[i].iCallbackType == iCallbackType && !strcmp(g_HooksGamerules[i].pVar->GetName(), pProp) && pCallback == g_HooksGamerules[i].pCallback)
+		if (g_HooksGamerules[i].pExtensionAPI == pExt->GetAPI() /*Allow to extension remove only its hooks*/ && g_HooksGamerules[i].Element == iElement && g_HooksGamerules[i].sCallbackInfo.iCallbackType == iCallbackType && !strcmp(g_HooksGamerules[i].pVar->GetName(), pProp) && pCallback == g_HooksGamerules[i].sCallbackInfo.pCallback)
 		{
 			g_SendProxyManager.UnhookProxyGamerules(i);
 			UnhookExtensionUnload(pExt);
@@ -648,7 +646,7 @@ bool SendProxyManagerInterfaceImpl::AddUnhookListenerArray(IExtension * pExt, co
 		return false;
 	edict_t * pEdict = gameents->BaseEntityToEdict(pEntity);
 	for (int i = 0; i < g_Hooks.Count(); i++)
-		if (pEdict == g_Hooks[i].pEnt && g_Hooks[i].iCallbackType == iCallbackType && g_Hooks[i].Element == iElement && !strcmp(g_Hooks[i].pVar->GetName(), pProp) && pCallback == g_Hooks[i].pCallback)
+		if (pEdict == g_Hooks[i].pEnt && g_Hooks[i].sCallbackInfo.iCallbackType == iCallbackType && g_Hooks[i].Element == iElement && !strcmp(g_Hooks[i].pVar->GetName(), pProp) && pCallback == g_Hooks[i].sCallbackInfo.pCallback)
 		{
 			ListenerCallbackInfo info;
 			info.m_pExt = pExt;
@@ -672,7 +670,7 @@ bool SendProxyManagerInterfaceImpl::AddUnhookListenerArrayGamerules(IExtension *
 	if (!pProp || !*pProp)
 		return false;
 	for (int i = 0; i < g_HooksGamerules.Count(); i++)
-		if (g_HooksGamerules[i].iCallbackType == iCallbackType && g_HooksGamerules[i].Element == iElement && !strcmp(g_HooksGamerules[i].pVar->GetName(), pProp) && pCallback == g_HooksGamerules[i].pCallback)
+		if (g_HooksGamerules[i].sCallbackInfo.iCallbackType == iCallbackType && g_HooksGamerules[i].Element == iElement && !strcmp(g_HooksGamerules[i].pVar->GetName(), pProp) && pCallback == g_HooksGamerules[i].sCallbackInfo.pCallback)
 		{
 			ListenerCallbackInfo info;
 			info.m_pExt = pExt;
@@ -698,7 +696,7 @@ bool SendProxyManagerInterfaceImpl::RemoveUnhookListenerArray(IExtension * pExt,
 	
 	edict_t * pEdict = gameents->BaseEntityToEdict(pEntity);
 	for (int i = 0; i < g_Hooks.Count(); i++)
-		if (g_Hooks[i].pEnt == pEdict && g_Hooks[i].iCallbackType == iCallbackType && g_Hooks[i].Element == iElement && !strcmp(g_Hooks[i].pVar->GetName(), pProp) && pCallback == g_Hooks[i].pCallback)
+		if (g_Hooks[i].pEnt == pEdict && g_Hooks[i].sCallbackInfo.iCallbackType == iCallbackType && g_Hooks[i].Element == iElement && !strcmp(g_Hooks[i].pVar->GetName(), pProp) && pCallback == g_Hooks[i].sCallbackInfo.pCallback)
 		{
 			for (int j = 0; j < g_Hooks[i].vListeners->Count(); j++)
 			{
@@ -726,7 +724,7 @@ bool SendProxyManagerInterfaceImpl::RemoveUnhookListenerArrayGamerules(IExtensio
 		return false;
 	
 	for (int i = 0; i < g_HooksGamerules.Count(); i++)
-		if (g_HooksGamerules[i].iCallbackType == iCallbackType && g_HooksGamerules[i].Element == iElement && !strcmp(g_HooksGamerules[i].pVar->GetName(), pProp) && pCallback == g_HooksGamerules[i].pCallback)
+		if (g_HooksGamerules[i].sCallbackInfo.iCallbackType == iCallbackType && g_HooksGamerules[i].Element == iElement && !strcmp(g_HooksGamerules[i].pVar->GetName(), pProp) && pCallback == g_HooksGamerules[i].sCallbackInfo.pCallback)
 		{
 			for (int j = 0; j < g_HooksGamerules[i].vListeners->Count(); j++)
 			{

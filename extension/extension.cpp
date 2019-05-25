@@ -67,7 +67,6 @@ class CGlobalEntityList;
 
 CGameClient * g_pCurrentGameClientPtr = nullptr;
 int g_iCurrentClientIndexInLoop = -1; //used for optimization
-int g_iEdictCount;
 bool g_bCurrentGameClientCallFwd = false;
 bool g_bCallingForNullClients = false;
 bool g_bFirstTimeCalled = true;
@@ -98,12 +97,15 @@ ConVar * sv_parallel_packentities = nullptr;
 ConVar * sv_parallel_sendsnapshot = nullptr;
 
 edict_t * g_pGameRulesProxyEdict = nullptr;
+void * g_pGameRules = nullptr;
 bool g_bShouldChangeGameRulesState = false;
 bool g_bSendSnapshots = false;
 
 CGlobalVars * g_pGlobals = nullptr;
 
 static CBaseEntity * FindEntityByServerClassname(int, const char *);
+static void CallChangeCallbacks(PropChangeHook * pInfo, void * pOldValue, void * pNewValue);
+static void CallChangeGamerulesCallbacks(PropChangeHookGamerules * pInfo, void * pOldValue, void * pNewValue);
 
 const char * g_szGameRulesProxy;
 
@@ -393,19 +395,11 @@ void Hook_GameFrame(bool simulating)
 				case PropType::Prop_Int:
 				{
 					edict_t * pEnt = gamehelpers->EdictOfIndex(g_ChangeHooks[i].objectID);
-					CBaseEntity* pEntity = gameents->EdictToBaseEntity(pEnt);
-					int iCurrent = *(int*)((unsigned char*)pEntity + g_ChangeHooks[i].Offset);
+					CBaseEntity * pEntity = gameents->EdictToBaseEntity(pEnt);
+					int iCurrent = *(int *)((unsigned char *)pEntity + g_ChangeHooks[i].Offset);
 					if (iCurrent != g_ChangeHooks[i].iLastValue)
-						{
-						g_ChangeHooks[i].pCallback->PushCell(g_ChangeHooks[i].objectID);
-						g_ChangeHooks[i].pCallback->PushString(g_ChangeHooks[i].pVar->GetName());
-						char oldValue[64];
-						snprintf(oldValue, 64, "%d", g_ChangeHooks[i].iLastValue);
-						char newValue[64];
-						snprintf(newValue, 64, "%d", iCurrent);
-						g_ChangeHooks[i].pCallback->PushString(oldValue);
-						g_ChangeHooks[i].pCallback->PushString(newValue);
-						g_ChangeHooks[i].pCallback->Execute(0);
+					{
+						CallChangeCallbacks(&g_ChangeHooks[i], (void *)&g_ChangeHooks[i].iLastValue, (void *)&iCurrent);
 						g_ChangeHooks[i].iLastValue = iCurrent;
 					}
 					break;
@@ -413,19 +407,11 @@ void Hook_GameFrame(bool simulating)
 				case PropType::Prop_Float:
 				{
 					edict_t * pEnt = gamehelpers->EdictOfIndex(g_ChangeHooks[i].objectID);
-					CBaseEntity* pEntity = gameents->EdictToBaseEntity(pEnt);
-					float flCurrent = *(float*)((unsigned char*)pEntity + g_ChangeHooks[i].Offset);
+					CBaseEntity * pEntity = gameents->EdictToBaseEntity(pEnt);
+					float flCurrent = *(float *)((unsigned char *)pEntity + g_ChangeHooks[i].Offset);
 					if (flCurrent != g_ChangeHooks[i].flLastValue)
 					{
-						g_ChangeHooks[i].pCallback->PushCell(g_ChangeHooks[i].objectID);
-						g_ChangeHooks[i].pCallback->PushString(g_ChangeHooks[i].pVar->GetName());
-						char oldValue[64];
-						snprintf(oldValue, 64, "%f", g_ChangeHooks[i].flLastValue);
-						char newValue[64];
-						snprintf(newValue, 64, "%f", flCurrent);
-						g_ChangeHooks[i].pCallback->PushString(oldValue);
-						g_ChangeHooks[i].pCallback->PushString(newValue);
-						g_ChangeHooks[i].pCallback->Execute(0);
+						CallChangeCallbacks(&g_ChangeHooks[i], (void *)&g_ChangeHooks[i].flLastValue, (void *)&flCurrent);
 						g_ChangeHooks[i].flLastValue = flCurrent;
 					}
 					break;
@@ -433,31 +419,35 @@ void Hook_GameFrame(bool simulating)
 				case PropType::Prop_String:
 				{
 					edict_t * pEnt = gamehelpers->EdictOfIndex(g_ChangeHooks[i].objectID);
-					CBaseEntity* pEntity = gameents->EdictToBaseEntity(pEnt);
-					const char* szCurrent = (const char*)((unsigned char*)pEntity + g_ChangeHooks[i].Offset);
+					CBaseEntity * pEntity = gameents->EdictToBaseEntity(pEnt);
+					const char * szCurrent = (const char *)((unsigned char *)pEntity + g_ChangeHooks[i].Offset);
 					if (strcmp(szCurrent, g_ChangeHooks[i].cLastValue) != 0)
 					{
-						g_ChangeHooks[i].pCallback->PushCell(g_ChangeHooks[i].objectID);
-						g_ChangeHooks[i].pCallback->PushString(g_ChangeHooks[i].pVar->GetName());
-						g_ChangeHooks[i].pCallback->PushString(g_ChangeHooks[i].cLastValue);
-						g_ChangeHooks[i].pCallback->PushString(szCurrent);
-						g_ChangeHooks[i].pCallback->Execute(0);
+						CallChangeCallbacks(&g_ChangeHooks[i], (void *)g_ChangeHooks[i].cLastValue, (void *)szCurrent);
 						memset(g_ChangeHooks[i].cLastValue, 0, sizeof(g_ChangeHooks[i].cLastValue));
 						strncpy(g_ChangeHooks[i].cLastValue, szCurrent, sizeof(g_ChangeHooks[i].cLastValue));
 					}
 					break;
 				}
-				default:
+				case PropType::Prop_Vector:
 				{
-					//earlier typechecks failed
+					edict_t * pEnt = gamehelpers->EdictOfIndex(g_ChangeHooks[i].objectID);
+					CBaseEntity * pEntity = gameents->EdictToBaseEntity(pEnt);
+					Vector * pVec = (Vector *)((unsigned char *)pEntity + g_ChangeHooks[i].Offset);
+					if (*pVec != g_ChangeHooks[i].vecLastValue)
+					{
+						CallChangeCallbacks(&g_ChangeHooks[i], (void *)&g_ChangeHooks[i].vecLastValue, (void *)pVec);
+						g_ChangeHooks[i].vecLastValue = *pVec;
+					}
+					break;
 				}
+				default: rootconsole->ConsolePrint(__FUNCTION__ " at line %i: SendProxy report: Unknown prop type (%s).", __LINE__, g_ChangeHooks[i].pVar->GetName());
 			}
 		}
-		static void *pGamerules = nullptr;
-		if (!pGamerules && g_pSDKTools)
+		if (!g_pGameRules && g_pSDKTools)
 		{
-			pGamerules = g_pSDKTools->GetGameRules();
-			if(!pGamerules)
+			g_pGameRules = g_pSDKTools->GetGameRules();
+			if (!g_pGameRules)
 			{
 				g_pSM->LogError(myself, "CRITICAL ERROR: Could not get gamerules pointer!");
 				return;
@@ -470,56 +460,46 @@ void Hook_GameFrame(bool simulating)
 			{
 				case PropType::Prop_Int:
 				{
-					int iCurrent = *(int*)((unsigned char*)pGamerules + g_ChangeHooksGamerules[i].Offset);
+					int iCurrent = *(int *)((unsigned char *)g_pGameRules + g_ChangeHooksGamerules[i].Offset);
 					if (iCurrent != g_ChangeHooksGamerules[i].iLastValue)
 					{
-						g_ChangeHooksGamerules[i].pCallback->PushString(g_ChangeHooksGamerules[i].pVar->GetName());
-						char oldValue[64];
-						snprintf(oldValue, 64, "%d", g_ChangeHooksGamerules[i].iLastValue);
-						char newValue[64];
-						snprintf(newValue, 64, "%d", iCurrent);
-						g_ChangeHooksGamerules[i].pCallback->PushString(oldValue);
-						g_ChangeHooksGamerules[i].pCallback->PushString(newValue);
-						g_ChangeHooksGamerules[i].pCallback->Execute(0);
+						CallChangeGamerulesCallbacks(&g_ChangeHooksGamerules[i], (void *)&g_ChangeHooksGamerules[i].iLastValue, (void *)&iCurrent);
 						g_ChangeHooksGamerules[i].iLastValue = iCurrent;
 					}
 					break;
 				}
 				case PropType::Prop_Float:
 				{
-					float flCurrent = *(float*)((unsigned char*)pGamerules + g_ChangeHooksGamerules[i].Offset);
+					float flCurrent = *(float *)((unsigned char *)g_pGameRules + g_ChangeHooksGamerules[i].Offset);
 					if (flCurrent != g_ChangeHooksGamerules[i].flLastValue)
 					{
-						g_ChangeHooksGamerules[i].pCallback->PushString(g_ChangeHooksGamerules[i].pVar->GetName());
-						char oldValue[64];
-						snprintf(oldValue, 64, "%f", g_ChangeHooksGamerules[i].flLastValue);
-						char newValue[64];
-						snprintf(newValue, 64, "%f", flCurrent);
-						g_ChangeHooksGamerules[i].pCallback->PushString(oldValue);
-						g_ChangeHooksGamerules[i].pCallback->PushString(newValue);
-						g_ChangeHooksGamerules[i].pCallback->Execute(0);
+						CallChangeGamerulesCallbacks(&g_ChangeHooksGamerules[i], (void *)&g_ChangeHooksGamerules[i].flLastValue, (void *)&flCurrent);
 						g_ChangeHooksGamerules[i].flLastValue = flCurrent;
 					}
 					break;
 				}
 				case PropType::Prop_String:
 				{
-					const char* szCurrent = (const char*)((unsigned char*)pGamerules + g_ChangeHooksGamerules[i].Offset);
+					const char * szCurrent = (const char *)((unsigned char *)g_pGameRules + g_ChangeHooksGamerules[i].Offset);
 					if (strcmp(szCurrent, g_ChangeHooksGamerules[i].cLastValue) != 0)
 					{
-						g_ChangeHooksGamerules[i].pCallback->PushString(g_ChangeHooksGamerules[i].pVar->GetName());
-						g_ChangeHooksGamerules[i].pCallback->PushString(g_ChangeHooksGamerules[i].cLastValue);
-						g_ChangeHooksGamerules[i].pCallback->PushString(szCurrent);
-						g_ChangeHooksGamerules[i].pCallback->Execute(0);
+						CallChangeGamerulesCallbacks(&g_ChangeHooksGamerules[i], (void *)g_ChangeHooksGamerules[i].cLastValue, (void *)szCurrent);
 						memset(g_ChangeHooks[i].cLastValue, 0, sizeof(g_ChangeHooks[i].cLastValue));
 						strncpy(g_ChangeHooks[i].cLastValue, szCurrent, sizeof(g_ChangeHooks[i].cLastValue));
 					}
 					break;
 				}
-				default:
+				case PropType::Prop_Vector:
 				{
-					//earlier typechecks failed
+					Vector * pVec = (Vector *)((unsigned char *)g_pGameRules + g_ChangeHooksGamerules[i].Offset);
+					if (*pVec != g_ChangeHooksGamerules[i].vecLastValue)
+					{
+						CallChangeGamerulesCallbacks(&g_ChangeHooksGamerules[i], (void *)&g_ChangeHooksGamerules[i].vecLastValue, (void *)pVec);
+						g_ChangeHooksGamerules[i].vecLastValue = *pVec;
+					}
+					break;
 				}
+				default: rootconsole->ConsolePrint(__FUNCTION__ " at line %i: SendProxy report: Unknown prop type (%s).", __LINE__, g_ChangeHooksGamerules[i].pVar->GetName());
 			}
 		}
 	}
@@ -575,7 +555,8 @@ bool SendProxyManager::SDK_OnLoad(char *error, size_t maxlength, bool late)
 	
 	g_pMyInterface = new SendProxyManagerInterfaceImpl();
 	sharesys->AddInterface(myself, g_pMyInterface);
-	sharesys->RegisterLibrary(myself, "sendproxy");
+	//we should not maintain compatibility with old plugins which uses earlier versions of sendproxy (< 1.3)
+	sharesys->RegisterLibrary(myself, "sendproxy13");
 	plsys->AddPluginsListener(&g_SendProxyManager);
 
 	return true;
@@ -617,6 +598,7 @@ void SendProxyManager::SDK_OnUnload()
 	{
 		g_pSDKHooks->RemoveEntityListener(this);
 	}
+	delete g_pMyInterface;
 }
 
 void SendProxyManager::OnCoreMapEnd()
@@ -632,7 +614,6 @@ void SendProxyManager::OnCoreMapEnd()
 
 void SendProxyManager::OnCoreMapStart(edict_t * pEdictList, int edictCount, int clientMax)
 {
-	g_iEdictCount = edictCount ? edictCount : g_pGlobals->maxEntities * 2;
 	CBaseEntity * pGameRulesProxyEnt = FindEntityByServerClassname(0, g_szGameRulesProxy);
 	if (!pGameRulesProxyEnt)
 	{
@@ -665,10 +646,10 @@ bool SendProxyManager::SDK_OnMetamodLoad(ISmmAPI *ismm, char *error, size_t maxl
 
 void SendProxyManager::OnPluginUnloaded(IPlugin * plugin)
 {
-	IPluginContext *pCtx = plugin->GetBaseContext();
+	IPluginContext * pCtx = plugin->GetBaseContext();
 	for (int i = 0; i < g_Hooks.Count(); i++)
 	{
-		if (g_Hooks[i].iCallbackType == CallBackType::Callback_PluginFunction && ((IPluginFunction *)g_Hooks[i].pCallback)->GetParentContext() == pCtx)
+		if (g_Hooks[i].sCallbackInfo.iCallbackType == CallBackType::Callback_PluginFunction && ((IPluginFunction *)g_Hooks[i].sCallbackInfo.pCallback)->GetParentContext() == pCtx)
 		{
 			UnhookProxy(i);
 			i--;
@@ -676,11 +657,41 @@ void SendProxyManager::OnPluginUnloaded(IPlugin * plugin)
 	}
 	for (int i = 0; i < g_HooksGamerules.Count(); i++)
 	{
-		if (g_HooksGamerules[i].iCallbackType == CallBackType::Callback_PluginFunction && ((IPluginFunction *)g_HooksGamerules[i].pCallback)->GetParentContext() == pCtx)
+		if (g_HooksGamerules[i].sCallbackInfo.iCallbackType == CallBackType::Callback_PluginFunction && ((IPluginFunction *)g_HooksGamerules[i].sCallbackInfo.pCallback)->GetParentContext() == pCtx)
 		{
 			UnhookProxyGamerules(i);
 			i--;
 		}
+	}
+	for (int i = 0; i < g_ChangeHooks.Count(); i++)
+	{
+		auto pCallbacks = g_ChangeHooks[i].vCallbacksInfo;
+		if (pCallbacks->Count())
+		{
+			for (int j = 0; j < pCallbacks->Count(); j++)
+				if ((*pCallbacks)[j].iCallbackType == CallBackType::Callback_PluginFunction && (IPluginContext *)(*pCallbacks)[j].pOwner == pCtx)
+				{
+					pCallbacks->Remove(j--);
+				}
+		}
+		//else do not needed here
+		if (!pCallbacks->Count())
+			g_ChangeHooks.Remove(i);
+	}
+	for (int i = 0; i < g_ChangeHooksGamerules.Count(); i++)
+	{
+		auto pCallbacks = g_ChangeHooksGamerules[i].vCallbacksInfo;
+		if (pCallbacks->Count())
+		{
+			for (int j = 0; j < pCallbacks->Count(); j++)
+				if ((*pCallbacks)[j].iCallbackType == CallBackType::Callback_PluginFunction && (IPluginContext *)(*pCallbacks)[j].pOwner == pCtx)
+				{
+					pCallbacks->Remove(j--);
+				}
+		}
+		//else do not needed here
+		if (!pCallbacks->Count())
+			g_ChangeHooksGamerules.Remove(i);
 	}
 }
 
@@ -760,6 +771,155 @@ void SendProxyManager::UnhookProxyGamerules(int i)
 
 //callbacks
 
+//Change
+
+void CallChangeCallbacks(PropChangeHook * pInfo, void * pOldValue, void * pNewValue)
+{
+	for (int i = 0; i < pInfo->vCallbacksInfo->Count(); i++)
+	{
+		auto sCallback = (*pInfo->vCallbacksInfo)[i];
+		switch (sCallback.iCallbackType)
+		{
+		case CallBackType::Callback_CPPCallbackInterface:
+		{
+			edict_t * pEnt = gamehelpers->EdictOfIndex(pInfo->objectID);
+			if (!pEnt)
+				break; //???
+			ISendProxyChangeCallbacks * pCallbacks = (ISendProxyChangeCallbacks *)sCallback.pCallback;
+			pCallbacks->OnEntityPropChange(gameents->EdictToBaseEntity(pEnt), pInfo->pVar, pNewValue, pOldValue, pInfo->PropType, pInfo->Element);
+		}
+		break;
+		case CallBackType::Callback_PluginFunction:
+		{
+			IPluginFunction * pCallBack = (IPluginFunction *)sCallback.pCallback;
+			switch (pInfo->PropType)
+			{
+			case PropType::Prop_Int:
+			{
+				pCallBack->PushCell(pInfo->objectID);
+				pCallBack->PushString(pInfo->pVar->GetName());
+				pCallBack->PushCell(pInfo->iLastValue);
+				pCallBack->PushCell(*(int *)pNewValue);
+				pCallBack->PushCell(pInfo->Element);
+				pCallBack->Execute(0);
+			}
+			break;
+			case PropType::Prop_Float:
+			{
+				pCallBack->PushCell(pInfo->objectID);
+				pCallBack->PushString(pInfo->pVar->GetName());
+				pCallBack->PushFloat(pInfo->flLastValue);
+				pCallBack->PushFloat(*(float *)pNewValue);
+				pCallBack->PushCell(pInfo->Element);
+				pCallBack->Execute(0);
+			}
+			break;
+			case PropType::Prop_String:
+			{
+				pCallBack->PushCell(pInfo->objectID);
+				pCallBack->PushString(pInfo->pVar->GetName());
+				pCallBack->PushString(pInfo->cLastValue);
+				pCallBack->PushString((char *)pNewValue);
+				pCallBack->PushCell(pInfo->Element);
+				pCallBack->Execute(0);
+			}
+			break;
+			case PropType::Prop_Vector:
+			{
+				cell_t vector[2][3];
+				Vector * pVec = (Vector *)pNewValue;
+				vector[0][0] = sp_ftoc(pVec->x);
+				vector[0][1] = sp_ftoc(pVec->y);
+				vector[0][2] = sp_ftoc(pVec->z);
+				vector[1][0] = sp_ftoc(pInfo->vecLastValue.x);
+				vector[1][1] = sp_ftoc(pInfo->vecLastValue.y);
+				vector[1][2] = sp_ftoc(pInfo->vecLastValue.z);
+				pCallBack->PushCell(pInfo->objectID);
+				pCallBack->PushString(pInfo->pVar->GetName());
+				pCallBack->PushArray(vector[1], 3);
+				pCallBack->PushArray(vector[0], 3);
+				pCallBack->PushCell(pInfo->Element);
+				pCallBack->Execute(0);
+			}
+			break;
+			}
+		}
+		break;
+		}
+	}
+}
+
+void CallChangeGamerulesCallbacks(PropChangeHookGamerules * pInfo, void * pOldValue, void * pNewValue)
+{
+	for (int i = 0; i < pInfo->vCallbacksInfo->Count(); i++)
+	{
+		auto sCallback = (*pInfo->vCallbacksInfo)[i];
+		switch (sCallback.iCallbackType)
+		{
+		case CallBackType::Callback_CPPCallbackInterface:
+		{
+			ISendProxyChangeCallbacks * pCallbacks = (ISendProxyChangeCallbacks *)sCallback.pCallback;
+			pCallbacks->OnGamerulesPropChange(pInfo->pVar, pNewValue, pOldValue, pInfo->PropType, pInfo->Element);
+		}
+		break;
+		case CallBackType::Callback_PluginFunction:
+		{
+			IPluginFunction * pCallBack = (IPluginFunction *)sCallback.pCallback;
+			switch (pInfo->PropType)
+			{
+			case PropType::Prop_Int:
+			{
+				pCallBack->PushString(pInfo->pVar->GetName());
+				pCallBack->PushCell(pInfo->iLastValue);
+				pCallBack->PushCell(*(int *)pNewValue);
+				pCallBack->PushCell(pInfo->Element);
+				pCallBack->Execute(0);
+			}
+			break;
+			case PropType::Prop_Float:
+			{
+				pCallBack->PushString(pInfo->pVar->GetName());
+				pCallBack->PushFloat(pInfo->flLastValue);
+				pCallBack->PushFloat(*(float *)pNewValue);
+				pCallBack->PushCell(pInfo->Element);
+				pCallBack->Execute(0);
+			}
+			break;
+			case PropType::Prop_String:
+			{
+				pCallBack->PushString(pInfo->pVar->GetName());
+				pCallBack->PushString(pInfo->cLastValue);
+				pCallBack->PushString((char *)pNewValue);
+				pCallBack->PushCell(pInfo->Element);
+				pCallBack->Execute(0);
+			}
+			break;
+			case PropType::Prop_Vector:
+			{
+				cell_t vector[2][3];
+				Vector * pVec = (Vector *)pNewValue;
+				vector[0][0] = sp_ftoc(pVec->x);
+				vector[0][1] = sp_ftoc(pVec->y);
+				vector[0][2] = sp_ftoc(pVec->z);
+				vector[1][0] = sp_ftoc(pInfo->vecLastValue.x);
+				vector[1][1] = sp_ftoc(pInfo->vecLastValue.y);
+				vector[1][2] = sp_ftoc(pInfo->vecLastValue.z);
+				pCallBack->PushString(pInfo->pVar->GetName());
+				pCallBack->PushArray(vector[1], 3);
+				pCallBack->PushArray(vector[0], 3);
+				pCallBack->PushCell(pInfo->Element);
+				pCallBack->Execute(0);
+			}
+			break;
+			}
+		}
+		break;
+		}
+	}
+}
+
+//Proxy
+
 bool CallInt(SendPropHook hook, int *ret)
 {
 	if (!g_bSVComputePacksDone)
@@ -767,11 +927,11 @@ bool CallInt(SendPropHook hook, int *ret)
 	
 	AUTO_LOCK_FM(g_WorkMutex);
 
-	switch (hook.iCallbackType)
+	switch (hook.sCallbackInfo.iCallbackType)
 	{
 		case CallBackType::Callback_PluginFunction:
 		{
-			IPluginFunction *callback = (IPluginFunction *)hook.pCallback;
+			IPluginFunction *callback = (IPluginFunction *)hook.sCallbackInfo.pCallback;
 			cell_t value = *ret;
 			cell_t result = Pl_Continue;
 			callback->PushCell(hook.objectID);
@@ -787,9 +947,9 @@ bool CallInt(SendPropHook hook, int *ret)
 			}
 			break;
 		}
-		case CallBackType::Callback_CPPFunction:
+		case CallBackType::Callback_CPPCallbackInterface:
 		{
-			ISendProxyCallbacks * pCallbacks = (ISendProxyCallbacks *)hook.pCallback;
+			ISendProxyCallbacks * pCallbacks = (ISendProxyCallbacks *)hook.sCallbackInfo.pCallback;
 			int iValue = *ret;
 			bool bChange = pCallbacks->OnEntityPropProxyFunctionCalls(gameents->EdictToBaseEntity(hook.pEnt), hook.pVar, (CBasePlayer *)gamehelpers->ReferenceToEntity(g_iCurrentClientIndexInLoop + 1), (void *)&iValue, hook.PropType, hook.Element);
 			if (bChange)
@@ -810,11 +970,11 @@ bool CallIntGamerules(SendPropHookGamerules hook, int *ret)
 	
 	AUTO_LOCK_FM(g_WorkMutex);
 
-	switch (hook.iCallbackType)
+	switch (hook.sCallbackInfo.iCallbackType)
 	{
 		case CallBackType::Callback_PluginFunction:
 		{
-			IPluginFunction *callback = (IPluginFunction *)hook.pCallback;
+			IPluginFunction *callback = (IPluginFunction *)hook.sCallbackInfo.pCallback;
 			cell_t value = *ret;
 			cell_t result = Pl_Continue;
 			callback->PushString(hook.pVar->GetName());
@@ -829,9 +989,9 @@ bool CallIntGamerules(SendPropHookGamerules hook, int *ret)
 			}
 			break;
 		}
-		case CallBackType::Callback_CPPFunction:
+		case CallBackType::Callback_CPPCallbackInterface:
 		{
-			ISendProxyCallbacks * pCallbacks = (ISendProxyCallbacks *)hook.pCallback;
+			ISendProxyCallbacks * pCallbacks = (ISendProxyCallbacks *)hook.sCallbackInfo.pCallback;
 			int iValue = *ret;
 			bool bChange = pCallbacks->OnGamerulesPropProxyFunctionCalls(hook.pVar, (CBasePlayer *)gamehelpers->ReferenceToEntity(g_iCurrentClientIndexInLoop + 1), (void *)&iValue, hook.PropType, hook.Element);
 			if (bChange)
@@ -852,11 +1012,11 @@ bool CallFloat(SendPropHook hook, float *ret)
 	
 	AUTO_LOCK_FM(g_WorkMutex);
 	
-	switch (hook.iCallbackType)
+	switch (hook.sCallbackInfo.iCallbackType)
 	{
 		case CallBackType::Callback_PluginFunction:
 		{
-			IPluginFunction *callback = (IPluginFunction *)hook.pCallback;
+			IPluginFunction *callback = (IPluginFunction *)hook.sCallbackInfo.pCallback;
 			float value = *ret;
 			cell_t result = Pl_Continue;
 			callback->PushCell(hook.objectID);
@@ -872,9 +1032,9 @@ bool CallFloat(SendPropHook hook, float *ret)
 			}
 			break;
 		}
-		case CallBackType::Callback_CPPFunction:
+		case CallBackType::Callback_CPPCallbackInterface:
 		{
-			ISendProxyCallbacks * pCallbacks = (ISendProxyCallbacks *)hook.pCallback;
+			ISendProxyCallbacks * pCallbacks = (ISendProxyCallbacks *)hook.sCallbackInfo.pCallback;
 			float flValue = *ret;
 			bool bChange = pCallbacks->OnEntityPropProxyFunctionCalls(gameents->EdictToBaseEntity(hook.pEnt), hook.pVar, (CBasePlayer *)gamehelpers->ReferenceToEntity(g_iCurrentClientIndexInLoop + 1), (void *)&flValue, hook.PropType, hook.Element);
 			if (bChange)
@@ -895,11 +1055,11 @@ bool CallFloatGamerules(SendPropHookGamerules hook, float *ret)
 	
 	AUTO_LOCK_FM(g_WorkMutex);
 
-	switch (hook.iCallbackType)
+	switch (hook.sCallbackInfo.iCallbackType)
 	{
 		case CallBackType::Callback_PluginFunction:
 		{
-			IPluginFunction *callback = (IPluginFunction *)hook.pCallback;
+			IPluginFunction *callback = (IPluginFunction *)hook.sCallbackInfo.pCallback;
 			float value = *ret;
 			cell_t result = Pl_Continue;
 			callback->PushString(hook.pVar->GetName());
@@ -914,9 +1074,9 @@ bool CallFloatGamerules(SendPropHookGamerules hook, float *ret)
 			}
 			break;
 		}
-		case CallBackType::Callback_CPPFunction:
+		case CallBackType::Callback_CPPCallbackInterface:
 		{
-			ISendProxyCallbacks * pCallbacks = (ISendProxyCallbacks *)hook.pCallback;
+			ISendProxyCallbacks * pCallbacks = (ISendProxyCallbacks *)hook.sCallbackInfo.pCallback;
 			float flValue = *ret;
 			bool bChange = pCallbacks->OnGamerulesPropProxyFunctionCalls(hook.pVar, (CBasePlayer *)gamehelpers->ReferenceToEntity(g_iCurrentClientIndexInLoop + 1), (void *)&flValue, hook.PropType, hook.Element);
 			if (bChange)
@@ -937,16 +1097,13 @@ bool CallString(SendPropHook hook, char **ret)
 	
 	AUTO_LOCK_FM(g_WorkMutex);
 
-	switch (hook.iCallbackType)
+	switch (hook.sCallbackInfo.iCallbackType)
 	{
 		case CallBackType::Callback_PluginFunction:
 		{
-			IPluginFunction *callback = (IPluginFunction *)hook.pCallback;
-			static char value[4096];
-			const char *src;
-			CBaseEntity *pbe = gameents->EdictToBaseEntity(hook.pEnt);
-			src = (char *)((unsigned char*)pbe + hook.Offset);
-			strncpy(value, src, sizeof(value));
+			IPluginFunction *callback = (IPluginFunction *)hook.sCallbackInfo.pCallback;
+			char * value = new char[4096];
+			strncpy(value, *ret, 4096);
 			cell_t result = Pl_Continue;
 			callback->PushCell(hook.objectID);
 			callback->PushString(hook.pVar->GetName());
@@ -961,13 +1118,12 @@ bool CallString(SendPropHook hook, char **ret)
 			}
 			break;
 		}
-		case CallBackType::Callback_CPPFunction:
+		case CallBackType::Callback_CPPCallbackInterface:
 		{
-			ISendProxyCallbacks * pCallbacks = (ISendProxyCallbacks *)hook.pCallback;
-			static char cValue[4096];
-			CBaseEntity * pEnt = gameents->EdictToBaseEntity(hook.pEnt);
-			strncpy(cValue, (char *)pEnt + hook.Offset, sizeof(cValue));
-			bool bChange = pCallbacks->OnEntityPropProxyFunctionCalls(pEnt, hook.pVar, (CBasePlayer *)gamehelpers->ReferenceToEntity(g_iCurrentClientIndexInLoop + 1), (void *)cValue, hook.PropType, hook.Element);
+			ISendProxyCallbacks * pCallbacks = (ISendProxyCallbacks *)hook.sCallbackInfo.pCallback;
+			char * cValue = new char[4096];
+			strncpy(cValue, *ret, 4096);
+			bool bChange = pCallbacks->OnEntityPropProxyFunctionCalls(gameents->EdictToBaseEntity(hook.pEnt), hook.pVar, (CBasePlayer *)gamehelpers->ReferenceToEntity(g_iCurrentClientIndexInLoop + 1), (void *)cValue, hook.PropType, hook.Element);
 			if (bChange)
 			{
 				*ret = cValue;
@@ -986,7 +1142,7 @@ bool CallStringGamerules(SendPropHookGamerules hook, char **ret)
 	
 	AUTO_LOCK_FM(g_WorkMutex);
 
-	switch (hook.iCallbackType)
+	switch (hook.sCallbackInfo.iCallbackType)
 	{
 		case CallBackType::Callback_PluginFunction:
 		{
@@ -996,11 +1152,9 @@ bool CallStringGamerules(SendPropHookGamerules hook, char **ret)
 				g_pSM->LogError(myself, "CRITICAL ERROR: Could not get gamerules pointer!");
 			}
 			
-			IPluginFunction *callback = (IPluginFunction *)hook.pCallback;
-			static char value[4096];
-			const char *src;
-			src = (char *)((unsigned char*)pGamerules + hook.Offset);
-			strncpy(value, src, sizeof(value));
+			IPluginFunction *callback = (IPluginFunction *)hook.sCallbackInfo.pCallback;
+			char * value = new char[4096];
+			strncpy(value, *ret, 4096);
 			cell_t result = Pl_Continue;
 			callback->PushString(hook.pVar->GetName());
 			callback->PushStringEx(value, 4096, SM_PARAM_STRING_UTF8 | SM_PARAM_STRING_COPY, SM_PARAM_COPYBACK);
@@ -1014,14 +1168,14 @@ bool CallStringGamerules(SendPropHookGamerules hook, char **ret)
 			}
 			break;
 		}
-		case CallBackType::Callback_CPPFunction:
+		case CallBackType::Callback_CPPCallbackInterface:
 		{
 			void * pGamerules = g_pSDKTools->GetGameRules();
 			if(!pGamerules)
 				return false;
-			ISendProxyCallbacks * pCallbacks = (ISendProxyCallbacks *)hook.pCallback;
-			static char cValue[4096];
-			strncpy(cValue, (char *)pGamerules + hook.Offset, sizeof(cValue));
+			ISendProxyCallbacks * pCallbacks = (ISendProxyCallbacks *)hook.sCallbackInfo.pCallback;
+			char * cValue = new char[4096];
+			strncpy(cValue, *ret, 4096);
 			bool bChange = pCallbacks->OnGamerulesPropProxyFunctionCalls(hook.pVar, (CBasePlayer *)gamehelpers->ReferenceToEntity(g_iCurrentClientIndexInLoop + 1), (void *)cValue, hook.PropType, hook.Element);
 			if (bChange)
 			{
@@ -1041,11 +1195,11 @@ bool CallVector(SendPropHook hook, Vector &vec)
 	
 	AUTO_LOCK_FM(g_WorkMutex);
 
-	switch (hook.iCallbackType)
+	switch (hook.sCallbackInfo.iCallbackType)
 	{
 		case CallBackType::Callback_PluginFunction:
 		{
-			IPluginFunction *callback = (IPluginFunction *)hook.pCallback;
+			IPluginFunction *callback = (IPluginFunction *)hook.sCallbackInfo.pCallback;
 
 			cell_t vector[3];
 			vector[0] = sp_ftoc(vec.x);
@@ -1068,9 +1222,9 @@ bool CallVector(SendPropHook hook, Vector &vec)
 			}
 			break;
 		}
-		case CallBackType::Callback_CPPFunction:
+		case CallBackType::Callback_CPPCallbackInterface:
 		{
-			ISendProxyCallbacks * pCallbacks = (ISendProxyCallbacks *)hook.pCallback;
+			ISendProxyCallbacks * pCallbacks = (ISendProxyCallbacks *)hook.sCallbackInfo.pCallback;
 			Vector vNewVec(vec.x, vec.y, vec.z);
 			bool bChange = pCallbacks->OnGamerulesPropProxyFunctionCalls(hook.pVar, (CBasePlayer *)gamehelpers->ReferenceToEntity(g_iCurrentClientIndexInLoop + 1), (void *)&vNewVec, hook.PropType, hook.Element);
 			if (bChange)
@@ -1093,11 +1247,11 @@ bool CallVectorGamerules(SendPropHookGamerules hook, Vector &vec)
 	
 	AUTO_LOCK_FM(g_WorkMutex);
 
-	switch (hook.iCallbackType)
+	switch (hook.sCallbackInfo.iCallbackType)
 	{
 		case CallBackType::Callback_PluginFunction:
 		{
-			IPluginFunction *callback = (IPluginFunction *)hook.pCallback;
+			IPluginFunction *callback = (IPluginFunction *)hook.sCallbackInfo.pCallback;
 
 			cell_t vector[3];
 			vector[0] = sp_ftoc(vec.x);
@@ -1119,9 +1273,9 @@ bool CallVectorGamerules(SendPropHookGamerules hook, Vector &vec)
 			}
 			break;
 		}
-		case CallBackType::Callback_CPPFunction:
+		case CallBackType::Callback_CPPCallbackInterface:
 		{
-			ISendProxyCallbacks * pCallbacks = (ISendProxyCallbacks *)hook.pCallback;
+			ISendProxyCallbacks * pCallbacks = (ISendProxyCallbacks *)hook.sCallbackInfo.pCallback;
 			Vector vNewVec(vec.x, vec.y, vec.z);
 			bool bChange = pCallbacks->OnGamerulesPropProxyFunctionCalls(hook.pVar, (CBasePlayer *)gamehelpers->ReferenceToEntity(g_iCurrentClientIndexInLoop + 1), (void *)&vNewVec, hook.PropType, hook.Element);
 			if (bChange)
@@ -1176,16 +1330,18 @@ void GlobalProxy(const SendProp *pProp, const void *pStructBase, const void * pD
 				}
 				case PropType::Prop_String:
 				{
-					char* result = (char *)pData;
+					char * result = (char *)pData;
 
 					if (CallString(g_Hooks[i], &result))
 					{
-						g_Hooks[i].pRealProxy(pProp, pStructBase, &result, pOut, iElement, objectID);
-						return;
-					} else {
-						g_Hooks[i].pRealProxy(pProp, pStructBase, pData, pOut, iElement, objectID);
-						return;
+						g_Hooks[i].pRealProxy(pProp, pStructBase, result, pOut, iElement, objectID);
 					}
+					else
+					{
+						g_Hooks[i].pRealProxy(pProp, pStructBase, pData, pOut, iElement, objectID);
+					}
+					if (result != (char *)pData)
+						delete[] result;
 				}
 				case PropType::Prop_Vector:
 				{
@@ -1200,7 +1356,7 @@ void GlobalProxy(const SendProp *pProp, const void *pStructBase, const void * pD
 						return;
 					}
 				}
-				default: rootconsole->ConsolePrint("SendProxy report: Unknown prop type.");
+				default: rootconsole->ConsolePrint(__FUNCTION__ " at line %i: SendProxy report: Unknown prop type (%s).", __LINE__, g_Hooks[i].pVar->GetName());
 			}
 		}
 	}
@@ -1260,18 +1416,18 @@ void GlobalProxyGamerules(const SendProp *pProp, const void *pStructBase, const 
 				}
 				case PropType::Prop_String:
 				{
-					char* result = (char *)pData;
+					char * result = (char *)pData;
 
 					if (CallStringGamerules(g_HooksGamerules[i], &result))
 					{
-						g_HooksGamerules[i].pRealProxy(pProp, pStructBase, &result, pOut, iElement, objectID);
-						return;
+						g_HooksGamerules[i].pRealProxy(pProp, pStructBase, result, pOut, iElement, objectID);
 					}
 					else
 					{
 						g_HooksGamerules[i].pRealProxy(pProp, pStructBase, pData, pOut, iElement, objectID);
-						return;
 					}
+					if (result != (char *)pData)
+						delete[] result;
 				}
 				case PropType::Prop_Vector:
 				{
@@ -1288,7 +1444,7 @@ void GlobalProxyGamerules(const SendProp *pProp, const void *pStructBase, const 
 						return;
 					}
 				}
-				default: rootconsole->ConsolePrint("SendProxy report: Unknown prop type.");
+				default: rootconsole->ConsolePrint(__FUNCTION__ " at line %i: SendProxy report: Unknown prop type (%s).", __LINE__, g_HooksGamerules[i].pVar->GetName());
 			}
 		}
 	}
@@ -1311,8 +1467,6 @@ void GlobalProxyGamerules(const SendProp *pProp, const void *pStructBase, const 
 
 CBaseEntity * FindEntityByServerClassname(int iStart, const char * pServerClassName)
 {
-	if (!g_iEdictCount)
-		g_iEdictCount = g_pGlobals->maxEntities * 2;
 	if (iStart >= g_iEdictCount)
 		return nullptr;
 	for (int i = iStart; i < g_iEdictCount; i++)

@@ -58,7 +58,7 @@ enum class PropType : uint8_t
 enum class CallBackType : uint8_t
 {
 	Callback_PluginFunction = 1,
-	Callback_CPPFunction //see ISendProxyCallbacks
+	Callback_CPPCallbackInterface //see ISendProxyCallbacks
 };
  
 class ISendProxyUnhookListener
@@ -75,7 +75,7 @@ public:
 	 *
 	 * @noreturn
 	 */
-	virtual void OnEntityPropHookRemoved(CBaseEntity * pEntity, SendProp * pProp, PropType iType, CallBackType iCallbackType, void * pCallback) = 0;
+	virtual void OnEntityPropHookRemoved(const CBaseEntity * pEntity, const SendProp * pProp, const PropType iType, const CallBackType iCallbackType, const void * pCallback) = 0;
 	/*
 	 * Calls when hook of the gamerules prop is removed
 	 *
@@ -86,7 +86,7 @@ public:
 	 *
 	 * @noreturn
 	 */
-	virtual void OnGamerulesPropHookRemoved(SendProp * pProp, PropType iType, CallBackType iCallbackType, void * pCallback) = 0;
+	virtual void OnGamerulesPropHookRemoved(const SendProp * pProp, const PropType iType, const CallBackType iCallbackType, const void * pCallback) = 0;
 };
 
 class ISendProxyCallbacks
@@ -104,7 +104,7 @@ public:
 	 *
 	 * @return				true, to use changed value, false, to use original
 	 */
-	virtual bool OnEntityPropProxyFunctionCalls(CBaseEntity * pEntity, SendProp * pProp, CBasePlayer * pPlayer, void * pValue, PropType iType, int iElement) = 0;
+	virtual bool OnEntityPropProxyFunctionCalls(const CBaseEntity * pEntity, const SendProp * pProp, const CBasePlayer * pPlayer, void * pValue, const PropType iType, const int iElement) = 0;
 	/*
 	 * Calls when proxy function of gamerules prop is called
 	 *
@@ -116,9 +116,40 @@ public:
 	 *
 	 * @return				true, to use changed value, false, to use original
 	 */
-	virtual bool OnGamerulesPropProxyFunctionCalls(SendProp * pProp, CBasePlayer * pPlayer, void * pValue, PropType iType, int iElement) = 0;
+	virtual bool OnGamerulesPropProxyFunctionCalls(const SendProp * pProp, const CBasePlayer * pPlayer, void * pValue, const PropType iType, const int iElement) = 0;
 };
- 
+
+//not implemented yet
+class ISendProxyChangeCallbacks
+{
+public:
+	/*
+	 * Calls when prop of entity is changed
+	 *
+	 * @param pEntity		Pointer to CBaseEntity object that hooked
+	 * @param pProp			Pointer to SendProp that hooked
+	 * @param pNewValue		Pointer to new value of prop
+	 * @param pOldValue		Pointer to old value of prop
+	 * @param iType			PropType of the prop
+	 * @param iElement		Element number
+	 *
+	 * @noreturn
+	 */
+	virtual void OnEntityPropChange(const CBaseEntity * pEntity, const SendProp * pProp, const void * pNewValue, const void * pOldValue, const PropType iType, const int iElement) = 0;
+	/*
+	 * Calls when prop of gamerules is changed
+	 *
+	 * @param pProp			Pointer to SendProp that hooked
+	 * @param pNewValue		Pointer to new value of prop
+	 * @param pOldValue		Pointer to old value of prop
+	 * @param iType			PropType of the prop
+	 * @param iElement		Element number
+	 *
+	 * @noreturn
+	 */
+	virtual void OnGamerulesPropChange(const SendProp * pProp, const void * pNewValue, const void * pOldValue, const PropType iType, const int iElement) = 0;
+};
+
 class ISendProxyManager : public SMInterface
 {
 public: //SMInterface

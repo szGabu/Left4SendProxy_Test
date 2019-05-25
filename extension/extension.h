@@ -34,8 +34,8 @@
 
  /*
 	TODO:
-		Implement interface for prop change hooks & add natives
-		Allow multiple hooks for prop on same entity (probably use delegate for this?)
+		Implement interface for prop change hooks
+		Add remove listeners for change hooks
  */
 
 #include "smsdk_ext.h"
@@ -71,6 +71,13 @@ struct ListenerCallbackInfo
 	ISendProxyUnhookListener *				m_pCallBack;
 };
 
+struct CallBackInfo
+{
+	void *									pOwner; //Pointer to plugin context or IExtension *
+	void *									pCallback;
+	CallBackType							iCallbackType;
+};
+
 struct SendPropHook
 {
 	SendPropHook() { vListeners = new CUtlVector<ListenerCallbackInfo>(); }
@@ -81,8 +88,7 @@ struct SendPropHook
 		*vListeners = *rObj.vListeners;
 	}
 	~SendPropHook() { delete vListeners; }
-	void *									pCallback;
-	CallBackType							iCallbackType;
+	CallBackInfo							sCallbackInfo;
 	SendProp *								pVar;
 	edict_t *								pEnt;
 	SendVarProxyFn							pRealProxy;
@@ -104,12 +110,10 @@ struct SendPropHookGamerules
 		*vListeners = *rObj.vListeners;
 	}
 	~SendPropHookGamerules() { delete vListeners; }
-	void *									pCallback;
-	CallBackType							iCallbackType;
+	CallBackInfo							sCallbackInfo;
 	SendProp *								pVar;
 	SendVarProxyFn							pRealProxy;
 	PropType								PropType;
-	int										Offset;
 	int										Element{0};
 	IExtensionInterface *					pExtensionAPI{nullptr};
 	CUtlVector<ListenerCallbackInfo> *		vListeners;
@@ -117,25 +121,51 @@ struct SendPropHookGamerules
 
 struct PropChangeHook
 {
-	IPluginFunction *						pCallback;
-	int										iLastValue;
-	float									flLastValue;
-	char									cLastValue[4096];
+	PropChangeHook() { vCallbacksInfo = new CUtlVector<CallBackInfo>(); }
+	PropChangeHook(const PropChangeHook & rObj)
+	{
+		memcpy(this, &rObj, sizeof(PropChangeHook));
+		vCallbacksInfo = new CUtlVector<CallBackInfo>();
+		*vCallbacksInfo = *rObj.vCallbacksInfo;
+	}
+	~PropChangeHook() { delete vCallbacksInfo; }
+	union //unfortunately we MUST use union instead of std::variant cuz we should prevent libstdc++ linking in linux =|
+	{
+		int									iLastValue;
+		float								flLastValue;
+		Vector								vecLastValue;
+		char								cLastValue[4096];
+	};
 	SendProp *								pVar;
 	PropType								PropType;
 	unsigned int							Offset;
 	int										objectID;
+	int										Element{0};
+	CUtlVector<CallBackInfo> *				vCallbacksInfo;
 };
 
 struct PropChangeHookGamerules
 {
-	IPluginFunction *						pCallback;
-	int										iLastValue;
-	float									flLastValue;
-	char									cLastValue[4096];
+	PropChangeHookGamerules() { vCallbacksInfo = new CUtlVector<CallBackInfo>(); }
+	PropChangeHookGamerules(const PropChangeHookGamerules & rObj)
+	{
+		memcpy(this, &rObj, sizeof(PropChangeHookGamerules));
+		vCallbacksInfo = new CUtlVector<CallBackInfo>();
+		*vCallbacksInfo = *rObj.vCallbacksInfo;
+	}
+	~PropChangeHookGamerules() { delete vCallbacksInfo; }
+	union //unfortunately we MUST use union instead of std::variant cuz we should prevent libstdc++ linking in linux =|
+	{
+		int									iLastValue;
+		float								flLastValue;
+		Vector								vecLastValue;
+		char								cLastValue[4096];
+	};
 	SendProp *								pVar;
 	PropType								PropType;
 	unsigned int							Offset;
+	int										Element{0};
+	CUtlVector<CallBackInfo> *				vCallbacksInfo;
 };
  
 class SendProxyManager :
@@ -181,7 +211,8 @@ extern CUtlVector<SendPropHookGamerules> g_HooksGamerules;
 extern CUtlVector<PropChangeHook> g_ChangeHooks;
 extern CUtlVector<PropChangeHookGamerules> g_ChangeHooksGamerules;
 extern const char * g_szGameRulesProxy;
-extern int g_iEdictCount;
+constexpr int g_iEdictCount = 2048; //default value, we do not need to get it manually cuz it is constant
 extern ISDKTools * g_pSDKTools;
+extern void * g_pGameRules;
 
 #endif // _EXTENSION_H_INC_
