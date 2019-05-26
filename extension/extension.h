@@ -73,6 +73,9 @@ struct ListenerCallbackInfo
 
 struct CallBackInfo
 {
+	CallBackInfo() { memset(this, 0, sizeof(CallBackInfo)); }
+	CallBackInfo(const CallBackInfo & rObj) { memcpy(this, &rObj, sizeof(CallBackInfo)); }
+	CallBackInfo & operator=(const CallBackInfo & rObj) { return CallBackInfo(rObj); }
 	void *									pOwner; //Pointer to plugin context or IExtension *
 	void *									pCallback;
 	CallBackType							iCallbackType;
@@ -96,7 +99,6 @@ struct SendPropHook
 	PropType								PropType;
 	int										Offset;
 	int										Element{0};
-	IExtensionInterface *					pExtensionAPI{nullptr};
 	CUtlVector<ListenerCallbackInfo> *		vListeners;
 };
 
@@ -180,19 +182,22 @@ public: //sm
 	
 	virtual void OnCoreMapEnd();
 	virtual void OnCoreMapStart(edict_t *, int, int);
-	//virtual void SDK_OnPauseChange(bool paused);
 
-	//virtual bool QueryRunning(char *error, size_t maxlength);
 public: //other
 	void OnPluginUnloaded(IPlugin *plugin);
-	//Returns true upon success
-	//Returns false if hook exists for that object and prop
-	//Returns false if the prop does not exist or the edict does not exist/is free
+	//returns true upon success
 	bool AddHookToList(SendPropHook hook);
 	bool AddHookToListGamerules(SendPropHookGamerules hook);
 
+	//returns false if prop type not supported or entity is invalid
+	bool AddChangeHookToList(PropChangeHook sHook, CallBackInfo * pInfo);
+	bool AddChangeHookToListGamerules(PropChangeHookGamerules sHook, CallBackInfo * pInfo);
+
 	void UnhookProxy(int i);
 	void UnhookProxyGamerules(int i);
+
+	void UnhookChange(int i, CallBackInfo * pInfo);
+	void UnhookChangeGamerules(int i, CallBackInfo * pInfo);
 	virtual int GetClientCount() const;
 public: // ISMEntityListener
 	virtual void OnEntityDestroyed(CBaseEntity *pEntity);

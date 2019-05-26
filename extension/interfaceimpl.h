@@ -44,49 +44,80 @@ public: //SMInterface
 	virtual const char * GetInterfaceName();
 	virtual unsigned int GetInterfaceVersion();
 public: //interface impl:
-	virtual bool HookProxy(IExtension *, SendProp *, CBaseEntity *, PropType, CallBackType, void *);
-	virtual bool HookProxy(IExtension *, const char *, CBaseEntity *, PropType, CallBackType, void *);
-	virtual bool HookProxyGamerules(IExtension *, SendProp *, PropType, CallBackType, void *);
-	virtual bool HookProxyGamerules(IExtension *, const char *, PropType, CallBackType, void *);
-	virtual bool UnhookProxy(IExtension *, SendProp *, CBaseEntity *, CallBackType, void *);
-	virtual bool UnhookProxy(IExtension *, const char *, CBaseEntity *, CallBackType, void *);
-	virtual bool UnhookProxyGamerules(IExtension *, SendProp *, CallBackType, void *);
-	virtual bool UnhookProxyGamerules(IExtension *, const char *, CallBackType, void *);
-	virtual bool AddUnhookListener(IExtension *, SendProp *, CBaseEntity *, CallBackType, void *, ISendProxyUnhookListener *);
-	virtual bool AddUnhookListener(IExtension *, const char *, CBaseEntity *, CallBackType, void *, ISendProxyUnhookListener *);
-	virtual bool AddUnhookListenerGamerules(IExtension *, SendProp *, CallBackType, void *, ISendProxyUnhookListener *);
-	virtual bool AddUnhookListenerGamerules(IExtension *, const char *, CallBackType, void *, ISendProxyUnhookListener *);
-	virtual bool RemoveUnhookListener(IExtension *, SendProp *, CBaseEntity *, CallBackType, void *, ISendProxyUnhookListener *);
-	virtual bool RemoveUnhookListener(IExtension *, const char *, CBaseEntity *, CallBackType, void *, ISendProxyUnhookListener *);
-	virtual bool RemoveUnhookListenerGamerules(IExtension *, SendProp *, CallBackType, void *, ISendProxyUnhookListener *);
-	virtual bool RemoveUnhookListenerGamerules(IExtension *, const char *, CallBackType, void *, ISendProxyUnhookListener *);
+	virtual bool HookProxy(IExtension *, SendProp *, CBaseEntity *, PropType, CallBackType, void *) override;
+	virtual bool HookProxy(IExtension *, const char *, CBaseEntity *, PropType, CallBackType, void *) override;
+	virtual bool HookProxyGamerules(IExtension *, SendProp *, PropType, CallBackType, void *) override;
+	virtual bool HookProxyGamerules(IExtension *, const char *, PropType, CallBackType, void *) override;
+	virtual bool UnhookProxy(IExtension *, SendProp *, CBaseEntity *, CallBackType, void *) override;
+	virtual bool UnhookProxy(IExtension *, const char *, CBaseEntity *, CallBackType, void *) override;
+	virtual bool UnhookProxyGamerules(IExtension *, SendProp *, CallBackType, void *) override;
+	virtual bool UnhookProxyGamerules(IExtension *, const char *, CallBackType, void *) override;
+	virtual bool AddUnhookListener(IExtension *, SendProp *, CBaseEntity *, CallBackType, void *, ISendProxyUnhookListener *) override;
+	virtual bool AddUnhookListener(IExtension *, const char *, CBaseEntity *, CallBackType, void *, ISendProxyUnhookListener *) override;
+	virtual bool AddUnhookListenerGamerules(IExtension *, SendProp *, CallBackType, void *, ISendProxyUnhookListener *) override;
+	virtual bool AddUnhookListenerGamerules(IExtension *, const char *, CallBackType, void *, ISendProxyUnhookListener *) override;
+	virtual bool RemoveUnhookListener(IExtension *, SendProp *, CBaseEntity *, CallBackType, void *, ISendProxyUnhookListener *) override;
+	virtual bool RemoveUnhookListener(IExtension *, const char *, CBaseEntity *, CallBackType, void *, ISendProxyUnhookListener *) override;
+	virtual bool RemoveUnhookListenerGamerules(IExtension *, SendProp *, CallBackType, void *, ISendProxyUnhookListener *) override;
+	virtual bool RemoveUnhookListenerGamerules(IExtension *, const char *, CallBackType, void *, ISendProxyUnhookListener *) override;
 	//same for the arrays =|
-	virtual bool HookProxyArray(IExtension *, SendProp *, CBaseEntity *, PropType, int, CallBackType, void *);
-	virtual bool HookProxyArray(IExtension *, const char *, CBaseEntity *, PropType, int, CallBackType, void *);
-	virtual bool UnhookProxyArray(IExtension *, SendProp *, CBaseEntity *, int, CallBackType, void *);
-	virtual bool UnhookProxyArray(IExtension *, const char *, CBaseEntity *, int, CallBackType, void *);
-	virtual bool HookProxyArrayGamerules(IExtension *, SendProp *, PropType, int, CallBackType, void *);
-	virtual bool HookProxyArrayGamerules(IExtension *, const char *, PropType, int, CallBackType, void *);
-	virtual bool UnhookProxyArrayGamerules(IExtension *, SendProp *, int, CallBackType, void *);
-	virtual bool UnhookProxyArrayGamerules(IExtension *, const char *, int, CallBackType, void *);
-	virtual bool AddUnhookListenerArray(IExtension *, SendProp *, CBaseEntity *, int, CallBackType, void *, ISendProxyUnhookListener *);
-	virtual bool AddUnhookListenerArray(IExtension *, const char *, CBaseEntity *, int, CallBackType, void *, ISendProxyUnhookListener *);
-	virtual bool AddUnhookListenerArrayGamerules(IExtension *, SendProp *, int, CallBackType, void *, ISendProxyUnhookListener *);
-	virtual bool AddUnhookListenerArrayGamerules(IExtension *, const char *, int, CallBackType, void *, ISendProxyUnhookListener *);
-	virtual bool RemoveUnhookListenerArray(IExtension *, SendProp *, CBaseEntity *, int, CallBackType, void *, ISendProxyUnhookListener *);
-	virtual bool RemoveUnhookListenerArray(IExtension *, const char *, CBaseEntity *, int, CallBackType, void *, ISendProxyUnhookListener *);
-	virtual bool RemoveUnhookListenerArrayGamerules(IExtension *, SendProp *, int, CallBackType, void *, ISendProxyUnhookListener *);
-	virtual bool RemoveUnhookListenerArrayGamerules(IExtension *, const char *, int, CallBackType, void *, ISendProxyUnhookListener *);
+	virtual bool HookProxyArray(IExtension *, SendProp *, CBaseEntity *, PropType, int, CallBackType, void *) override;
+	virtual bool HookProxyArray(IExtension *, const char *, CBaseEntity *, PropType, int, CallBackType, void *) override;
+	virtual bool UnhookProxyArray(IExtension *, SendProp *, CBaseEntity *, int, CallBackType, void *) override;
+	virtual bool UnhookProxyArray(IExtension *, const char *, CBaseEntity *, int, CallBackType, void *) override;
+	virtual bool HookProxyArrayGamerules(IExtension *, SendProp *, PropType, int, CallBackType, void *) override;
+	virtual bool HookProxyArrayGamerules(IExtension *, const char *, PropType, int, CallBackType, void *) override;
+	virtual bool UnhookProxyArrayGamerules(IExtension *, SendProp *, int, CallBackType, void *) override;
+	virtual bool UnhookProxyArrayGamerules(IExtension *, const char *, int, CallBackType, void *) override;
+	virtual bool AddUnhookListenerArray(IExtension *, SendProp *, CBaseEntity *, int, CallBackType, void *, ISendProxyUnhookListener *) override;
+	virtual bool AddUnhookListenerArray(IExtension *, const char *, CBaseEntity *, int, CallBackType, void *, ISendProxyUnhookListener *) override;
+	virtual bool AddUnhookListenerArrayGamerules(IExtension *, SendProp *, int, CallBackType, void *, ISendProxyUnhookListener *) override;
+	virtual bool AddUnhookListenerArrayGamerules(IExtension *, const char *, int, CallBackType, void *, ISendProxyUnhookListener *) override;
+	virtual bool RemoveUnhookListenerArray(IExtension *, SendProp *, CBaseEntity *, int, CallBackType, void *, ISendProxyUnhookListener *) override;
+	virtual bool RemoveUnhookListenerArray(IExtension *, const char *, CBaseEntity *, int, CallBackType, void *, ISendProxyUnhookListener *) override;
+	virtual bool RemoveUnhookListenerArrayGamerules(IExtension *, SendProp *, int, CallBackType, void *, ISendProxyUnhookListener *) override;
+	virtual bool RemoveUnhookListenerArrayGamerules(IExtension *, const char *, int, CallBackType, void *, ISendProxyUnhookListener *) override;
 	//checkers
-	virtual bool IsProxyHooked(SendProp *, CBaseEntity *);
-	virtual bool IsProxyHooked(const char *, CBaseEntity *);
-	virtual bool IsProxyHookedGamerules(SendProp *);
-	virtual bool IsProxyHookedGamerules(const char *);
-	virtual bool IsProxyHookedArray(SendProp *, CBaseEntity *, int);
-	virtual bool IsProxyHookedArray(const char *, CBaseEntity *, int);
-	virtual bool IsProxyHookedArrayGamerules(SendProp *, int);
-	virtual bool IsProxyHookedArrayGamerules(const char *, int);
-	//TODO: same for the change hooks wtf, somebody else can do this if he want, it's pretty easy
+	virtual bool IsProxyHooked(IExtension *, SendProp *, CBaseEntity *) override;
+	virtual bool IsProxyHooked(IExtension *, const char *, CBaseEntity *) override;
+	virtual bool IsProxyHookedGamerules(IExtension *, SendProp *) override;
+	virtual bool IsProxyHookedGamerules(IExtension *, const char *) override;
+	virtual bool IsProxyHookedArray(IExtension *, SendProp *, CBaseEntity *, int) override;
+	virtual bool IsProxyHookedArray(IExtension *, const char *, CBaseEntity *, int) override;
+	virtual bool IsProxyHookedArrayGamerules(IExtension *, SendProp *, int) override;
+	virtual bool IsProxyHookedArrayGamerules(IExtension *, const char *, int) override;
+
+	/*
+	TODO:
+	//For the change hooks
+	virtual bool HookChange(IExtension *, SendProp *, CBaseEntity *, PropType, CallBackType, void *) override;
+	virtual bool HookChange(IExtension *, const char *, CBaseEntity *, PropType, CallBackType, void *) override;
+	virtual bool HookChangeGamerules(IExtension *, SendProp *, PropType, CallBackType, void *) override;
+	virtual bool HookChangeGamerules(IExtension *, const char *, PropType, CallBackType, void *) override;
+	virtual bool UnhookChange(IExtension *, SendProp *, CBaseEntity *, CallBackType, void *) override;
+	virtual bool UnhookChange(IExtension *, const char *, CBaseEntity *, CallBackType, void *) override;
+	virtual bool UnhookChangeGamerules(IExtension *, SendProp *, CallBackType, void *) override;
+	virtual bool UnhookChangeGamerules(IExtension *, const char *, CallBackType, void *) override;
+	//same for the arrays =|
+	virtual bool HookChangeArray(IExtension *, SendProp *, CBaseEntity *, PropType, int, CallBackType, void *) override;
+	virtual bool HookChangeArray(IExtension *, const char *, CBaseEntity *, PropType, int, CallBackType, void *) override;
+	virtual bool UnhookChangeArray(IExtension *, SendProp *, CBaseEntity *, int, CallBackType, void *) override;
+	virtual bool UnhookChangeArray(IExtension *, const char *, CBaseEntity *, int, CallBackType, void *) override;
+	virtual bool HookChangeArrayGamerules(IExtension *, SendProp *, PropType, int, CallBackType, void *) override;
+	virtual bool HookChangeArrayGamerules(IExtension *, const char *, PropType, int, CallBackType, void *) override;
+	virtual bool UnhookChangeArrayGamerules(IExtension *, SendProp *, int, CallBackType, void *) override;
+	virtual bool UnhookChangeArrayGamerules(IExtension *, const char *, int, CallBackType, void *) override;
+	//checkers
+	virtual bool IsChangeHooked(IExtension *, SendProp *, CBaseEntity *) override;
+	virtual bool IsChangeHooked(IExtension *, const char *, CBaseEntity *) override;
+	virtual bool IsChangeHookedGamerules(IExtension *, SendProp *) override;
+	virtual bool IsChangeHookedGamerules(IExtension *, const char *) override;
+	virtual bool IsChangeHookedArray(IExtension *, SendProp *, CBaseEntity *, int) override;
+	virtual bool IsChangeHookedArray(IExtension *, const char *, CBaseEntity *, int) override;
+	virtual bool IsChangeHookedArrayGamerules(IExtension *, SendProp *, int) override;
+	virtual bool IsChangeHookedArrayGamerules(IExtension *, const char *, int) override;
+	//More TODO: Add unhook listeners for change hooks
+	*/
 };
 
 #endif

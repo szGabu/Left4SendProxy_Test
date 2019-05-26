@@ -730,6 +730,96 @@ bool SendProxyManager::AddHookToListGamerules(SendPropHookGamerules hook)
 	return true;
 }
 
+bool SendProxyManager::AddChangeHookToList(PropChangeHook sHook, CallBackInfo * pInfo)
+{
+	decltype(&g_ChangeHooks[0]) pHookInfo = nullptr;
+	for (int i = 0; i < g_ChangeHooks.Count(); i++)
+	{
+		if (g_ChangeHooks[i].pVar == sHook.pVar)
+		{
+			pHookInfo = &g_ChangeHooks[i];
+			break;
+		}
+	}
+	if (pHookInfo)
+	{
+		//just validate it
+		switch (sHook.PropType)
+		{
+		case PropType::Prop_Int:
+		case PropType::Prop_Float:
+		case PropType::Prop_String:
+		case PropType::Prop_Vector:
+			break;
+		default: return false;
+		}
+		pHookInfo->vCallbacksInfo->AddToTail(*pInfo);
+	}
+	else
+	{
+		edict_t * pEnt = gamehelpers->EdictOfIndex(sHook.objectID);
+		if (!pEnt || pEnt->IsFree()) return false; //should never happen
+		CBaseEntity * pEntity = gameents->EdictToBaseEntity(pEnt);
+		if (!pEntity) return false; //should never happen
+		switch (sHook.PropType)
+		{
+		case PropType::Prop_Int: sHook.iLastValue = *(int *)((unsigned char *)pEntity + sHook.Offset); break;
+		case PropType::Prop_Float: sHook.flLastValue = *(float *)((unsigned char*)pEntity + sHook.Offset); break;
+		case PropType::Prop_String: strncpy(sHook.cLastValue, (const char *)((unsigned char *)pEntity + sHook.Offset), sizeof(sHook.cLastValue)); break;
+		case PropType::Prop_Vector: sHook.vecLastValue = *(Vector *)((unsigned char *)pEntity + sHook.Offset); break;
+		default: return false;
+		}
+
+		CallBackInfo sCallInfo = *pInfo;
+		sHook.vCallbacksInfo->AddToTail(sCallInfo);
+		g_ChangeHooks.AddToTail(sHook);
+	}
+	return true;
+}
+
+bool SendProxyManager::AddChangeHookToListGamerules(PropChangeHookGamerules sHook, CallBackInfo * pInfo)
+{
+	decltype(&g_ChangeHooksGamerules[0]) pHookInfo = nullptr;
+	for (int i = 0; i < g_ChangeHooksGamerules.Count(); i++)
+	{
+		if (g_ChangeHooksGamerules[i].pVar == sHook.pVar)
+		{
+			pHookInfo = &g_ChangeHooksGamerules[i];
+			break;
+		}
+	}
+	if (pHookInfo)
+	{
+		//just validate it
+		switch (sHook.PropType)
+		{
+		case PropType::Prop_Int:
+		case PropType::Prop_Float:
+		case PropType::Prop_String:
+		case PropType::Prop_Vector:
+			break;
+		default: return false;
+		}
+		pHookInfo->vCallbacksInfo->AddToTail(*pInfo);
+	}
+	else
+	{
+		switch (sHook.PropType)
+		{
+		case PropType::Prop_Int: sHook.iLastValue = *(int *)((unsigned char *)g_pGameRules + sHook.Offset); break;
+		case PropType::Prop_Float: sHook.flLastValue = *(float *)((unsigned char*)g_pGameRules + sHook.Offset); break;
+		case PropType::Prop_String: strncpy(sHook.cLastValue, (const char *)((unsigned char *)g_pGameRules + sHook.Offset), sizeof(sHook.cLastValue)); break;
+		case PropType::Prop_Vector: sHook.vecLastValue = *(Vector *)((unsigned char *)g_pGameRules + sHook.Offset); break;
+		default: return false;
+		}
+
+		CallBackInfo sCallInfo = *pInfo;
+		sHook.vCallbacksInfo->AddToTail(sCallInfo);
+		g_ChangeHooksGamerules.AddToTail(sHook);
+	}
+	return true;
+}
+
 void SendProxyManager::UnhookProxy(int i)
 {
 	//if there are other hooks for this prop, don't change the proxy, just remove it from our list
@@ -768,6 +858,42 @@ void SendProxyManager::UnhookProxyGamerules(int i)
 	CallListenersForHookIDGamerules(i);
 	g_HooksGamerules[i].pVar->SetProxyFn(g_HooksGamerules[i].pRealProxy);
 	g_HooksGamerules.Remove(i);
+}
+
+void SendProxyManager::UnhookChange(int i, CallBackInfo * pInfo)
+{
+	if (i < 0 || i >= g_ChangeHooks.Count())
+		return;
+	auto pCallbacks = g_ChangeHooks[i].vCallbacksInfo;
+	if (pCallbacks->Count())
+	{
+		for (int j = 0; j < pCallbacks->Count(); j++)
+			if ((*pCallbacks)[j].iCallbackType == pInfo->iCallbackType && (*pCallbacks)[j].pCallback == (void *)pInfo->pCallback)
+			{
+				pCallbacks->Remove(j--);
+			}
+	}
+	//if there no any callbacks anymore, then remove all info about this hook
+	if (!pCallbacks->Count())
+		g_ChangeHooks.Remove(i);
+}
+
+void SendProxyManager::UnhookChangeGamerules(int i, CallBackInfo * pInfo)
+{
+	if (i < 0 || i >= g_ChangeHooksGamerules.Count())
+		return;
+	auto pCallbacks = g_ChangeHooksGamerules[i].vCallbacksInfo;
+	if (pCallbacks->Count())
+	{
+		for (int j = 0; j < pCallbacks->Count(); j++)
+			if ((*pCallbacks)[j].iCallbackType == pInfo->iCallbackType && (*pCallbacks)[j].pCallback == (void *)pInfo->pCallback)
+			{
+				pCallbacks->Remove(j--);
+			}
+	}
+	//if there no any callbacks anymore, then remove all info about this hook
+	if (!pCallbacks->Count())
+		g_ChangeHooksGamerules.Remove(i);
 }
 
 //callbacks

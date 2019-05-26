@@ -32,6 +32,8 @@
 #ifndef _INCLUDE_ISENDPROXY_
 #define _INCLUDE_ISENDPROXY_
  
+//WARNING! Interface not tested yet, but you can test it by yourself and report about any errors to github: https://github.com/TheByKotik/sendproxy
+
 #include <IShareSys.h>
 #include <IExtensionSys.h>
 #include "dt_send.h"
@@ -58,7 +60,7 @@ enum class PropType : uint8_t
 enum class CallBackType : uint8_t
 {
 	Callback_PluginFunction = 1,
-	Callback_CPPCallbackInterface //see ISendProxyCallbacks
+	Callback_CPPCallbackInterface //see ISendProxyCallbacks & ISendProxyChangeCallbacks
 };
  
 class ISendProxyUnhookListener
@@ -119,7 +121,6 @@ public:
 	virtual bool OnGamerulesPropProxyFunctionCalls(const SendProp * pProp, const CBasePlayer * pPlayer, void * pValue, const PropType iType, const int iElement) = 0;
 };
 
-//not implemented yet
 class ISendProxyChangeCallbacks
 {
 public:
@@ -392,8 +393,8 @@ public: //ISendProxyManager
 	 *
 	 * @return				true, if is hooked, false otherwise
 	 */
-	virtual bool IsProxyHooked(SendProp * pProp, CBaseEntity * pEntity) = 0;
-	virtual bool IsProxyHooked(const char * pProp, CBaseEntity * pEntity) = 0;
+	virtual bool IsProxyHooked(IExtension * pMyself, SendProp * pProp, CBaseEntity * pEntity) = 0;
+	virtual bool IsProxyHooked(IExtension * pMyself, const char * pProp, CBaseEntity * pEntity) = 0;
 	/*
 	 * Checks if gamerules proxy is hooked
 	 *
@@ -401,8 +402,8 @@ public: //ISendProxyManager
 	 *
 	 * @return				true, if is hooked, false otherwise
 	 */
-	virtual bool IsProxyHookedGamerules(SendProp * pProp) = 0;
-	virtual bool IsProxyHookedGamerules(const char * pProp) = 0;
+	virtual bool IsProxyHookedGamerules(IExtension * pMyself, SendProp * pProp) = 0;
+	virtual bool IsProxyHookedGamerules(IExtension * pMyself, const char * pProp) = 0;
 	/*
 	 * Checks if proxy array is hooked
 	 *
@@ -412,8 +413,8 @@ public: //ISendProxyManager
 	 *
 	 * @return				true, if is hooked, false otherwise
 	 */
-	virtual bool IsProxyHookedArray(SendProp * pProp, CBaseEntity * pEntity, int iElement) = 0;
-	virtual bool IsProxyHookedArray(const char * pProp, CBaseEntity * pEntity, int iElement) = 0;
+	virtual bool IsProxyHookedArray(IExtension * pMyself, SendProp * pProp, CBaseEntity * pEntity, int iElement) = 0;
+	virtual bool IsProxyHookedArray(IExtension * pMyself, const char * pProp, CBaseEntity * pEntity, int iElement) = 0;
 	/*
 	 * Checks if gamerules proxy is hooked
 	 *
@@ -422,8 +423,8 @@ public: //ISendProxyManager
 	 *
 	 * @return				true, if is hooked, false otherwise
 	 */
-	virtual bool IsProxyHookedArrayGamerules(SendProp * pProp, int iElement) = 0;
-	virtual bool IsProxyHookedArrayGamerules(const char * pProp, int iElement) = 0;
+	virtual bool IsProxyHookedArrayGamerules(IExtension * pMyself, SendProp * pProp, int iElement) = 0;
+	virtual bool IsProxyHookedArrayGamerules(IExtension * pMyself, const char * pProp, int iElement) = 0;
 };
 
 #endif
