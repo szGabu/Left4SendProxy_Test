@@ -47,7 +47,7 @@ void Hook_OnExtensionUnload()
 					g_Hooks[i].vListeners->Remove(j);
 			}
 		//remove hook for this extension
-		if (g_HooksGamerules[i].pExtensionAPI == pExtAPI)
+		if (g_Hooks[i].sCallbackInfo.iCallbackType == CallBackType::Callback_CPPCallbackInterface && static_cast<IExtension *>(g_Hooks[i].sCallbackInfo.pOwner)->GetAPI() == pExtAPI)
 			g_SendProxyManager.UnhookProxy(i);
 	}
 	for (int i = 0; i < g_HooksGamerules.Count(); i++)
@@ -61,7 +61,7 @@ void Hook_OnExtensionUnload()
 					g_HooksGamerules[i].vListeners->Remove(j);
 			}
 		//remove hook for this extension
-		if (g_HooksGamerules[i].pExtensionAPI == pExtAPI)
+		if (g_HooksGamerules[i].sCallbackInfo.iCallbackType == CallBackType::Callback_CPPCallbackInterface && static_cast<IExtension *>(g_HooksGamerules[i].sCallbackInfo.pOwner)->GetAPI() == pExtAPI)
 			g_SendProxyManager.UnhookProxyGamerules(i);
 	}
 	SH_REMOVE_HOOK(IExtensionInterface, OnExtensionUnload, pExtAPI, SH_STATIC(Hook_OnExtensionUnload), false);
@@ -95,7 +95,7 @@ void HookExtensionUnload(IExtension * pExt)
 	if (!bHookedAlready)
 		for (int i = 0; i < g_HooksGamerules.Count(); i++)
 		{
-			if (g_HooksGamerules[i].pExtensionAPI == pExt->GetAPI())
+			if (g_HooksGamerules[i].sCallbackInfo.pOwner == pExt)
 			{
 				bHookedAlready = true;
 				break;
@@ -142,7 +142,7 @@ void UnhookExtensionUnload(IExtension * pExt)
 	if (!bHaveHooks)
 		for (int i = 0; i < g_HooksGamerules.Count(); i++)
 		{
-			if (g_HooksGamerules[i].pExtensionAPI == pExt->GetAPI())
+			if (g_HooksGamerules[i].sCallbackInfo.pOwner == pExt)
 			{
 				bHaveHooks = true;
 				break;
@@ -274,7 +274,6 @@ bool SendProxyManagerInterfaceImpl::HookProxyGamerules(IExtension * pExt, SendPr
 		hook.pRealProxy = pProp->GetProxyFn();
 	hook.PropType = iType;
 	hook.pVar = pProp;
-	hook.pExtensionAPI = pExt->GetAPI();
 	sm_sendprop_info_t info;
 	gamehelpers->FindSendPropInfo(g_szGameRulesProxy, pProp->GetName(), &info);
 	
@@ -340,7 +339,7 @@ bool SendProxyManagerInterfaceImpl::UnhookProxyGamerules(IExtension * pExt, cons
 	if (!pProp || !*pProp)
 		return false;
 	for (int i = 0; i < g_HooksGamerules.Count(); i++)
-		if (g_HooksGamerules[i].pExtensionAPI == pExt->GetAPI() /*Allow to extension remove only its hooks*/ && g_HooksGamerules[i].sCallbackInfo.iCallbackType == iCallbackType && !strcmp(g_HooksGamerules[i].pVar->GetName(), pProp) && pCallback == g_HooksGamerules[i].sCallbackInfo.pCallback)
+		if (g_HooksGamerules[i].sCallbackInfo.pOwner == pExt /*Allow to extension remove only its hooks*/ && g_HooksGamerules[i].sCallbackInfo.iCallbackType == iCallbackType && !strcmp(g_HooksGamerules[i].pVar->GetName(), pProp) && pCallback == g_HooksGamerules[i].sCallbackInfo.pCallback)
 		{
 			g_SendProxyManager.UnhookProxyGamerules(i);
 			UnhookExtensionUnload(pExt);
@@ -560,7 +559,6 @@ bool SendProxyManagerInterfaceImpl::HookProxyArrayGamerules(IExtension * pExt, S
 		hook.pRealProxy = pProp->GetProxyFn();
 	hook.PropType = iType;
 	hook.pVar = pProp;
-	hook.pExtensionAPI = pExt->GetAPI();
 	sm_sendprop_info_t info;
 	gamehelpers->FindSendPropInfo(g_szGameRulesProxy, pProp->GetName(), &info);
 	hook.Element = iElement;
@@ -627,7 +625,7 @@ bool SendProxyManagerInterfaceImpl::UnhookProxyArrayGamerules(IExtension * pExt,
 	if (!pProp || !*pProp)
 		return false;
 	for (int i = 0; i < g_HooksGamerules.Count(); i++)
-		if (g_HooksGamerules[i].pExtensionAPI == pExt->GetAPI() /*Allow to extension remove only its hooks*/ && g_HooksGamerules[i].Element == iElement && g_HooksGamerules[i].sCallbackInfo.iCallbackType == iCallbackType && !strcmp(g_HooksGamerules[i].pVar->GetName(), pProp) && pCallback == g_HooksGamerules[i].sCallbackInfo.pCallback)
+		if (g_HooksGamerules[i].sCallbackInfo.pOwner == pExt /*Allow to extension remove only its hooks*/ && g_HooksGamerules[i].Element == iElement && g_HooksGamerules[i].sCallbackInfo.iCallbackType == iCallbackType && !strcmp(g_HooksGamerules[i].pVar->GetName(), pProp) && pCallback == g_HooksGamerules[i].sCallbackInfo.pCallback)
 		{
 			g_SendProxyManager.UnhookProxyGamerules(i);
 			UnhookExtensionUnload(pExt);
@@ -742,12 +740,12 @@ bool SendProxyManagerInterfaceImpl::RemoveUnhookListenerArrayGamerules(IExtensio
 	return false;
 }
 
-bool SendProxyManagerInterfaceImpl::IsProxyHooked(IExtension * pExt, SendProp * pProp, CBaseEntity * pEntity)
+bool SendProxyManagerInterfaceImpl::IsProxyHooked(IExtension * pExt, SendProp * pProp, CBaseEntity * pEntity) const
 {
 	return IsProxyHooked(pExt, pProp->GetName(), pEntity);
 }
 
-bool SendProxyManagerInterfaceImpl::IsProxyHooked(IExtension * pExt, const char * pProp, CBaseEntity * pEntity)
+bool SendProxyManagerInterfaceImpl::IsProxyHooked(IExtension * pExt, const char * pProp, CBaseEntity * pEntity) const
 {
 	if (!pProp || !*pProp)
 		return false;
@@ -758,12 +756,12 @@ bool SendProxyManagerInterfaceImpl::IsProxyHooked(IExtension * pExt, const char 
 	return false;
 }
 
-bool SendProxyManagerInterfaceImpl::IsProxyHookedGamerules(IExtension * pExt, SendProp * pProp)
+bool SendProxyManagerInterfaceImpl::IsProxyHookedGamerules(IExtension * pExt, SendProp * pProp) const
 {
 	return IsProxyHookedGamerules(pExt, pProp->GetName());
 }
 
-bool SendProxyManagerInterfaceImpl::IsProxyHookedGamerules(IExtension * pExt, const char * pProp)
+bool SendProxyManagerInterfaceImpl::IsProxyHookedGamerules(IExtension * pExt, const char * pProp) const
 {
 	if (!pProp || !*pProp)
 		return false;
@@ -773,12 +771,12 @@ bool SendProxyManagerInterfaceImpl::IsProxyHookedGamerules(IExtension * pExt, co
 	return false;
 }
 
-bool SendProxyManagerInterfaceImpl::IsProxyHookedArray(IExtension * pExt, SendProp * pProp, CBaseEntity * pEntity, int iElement)
+bool SendProxyManagerInterfaceImpl::IsProxyHookedArray(IExtension * pExt, SendProp * pProp, CBaseEntity * pEntity, int iElement) const
 {
 	return IsProxyHookedArray(pExt, pProp->GetName(), pEntity, iElement);
 }
 
-bool SendProxyManagerInterfaceImpl::IsProxyHookedArray(IExtension * pExt, const char * pProp, CBaseEntity * pEntity, int iElement)
+bool SendProxyManagerInterfaceImpl::IsProxyHookedArray(IExtension * pExt, const char * pProp, CBaseEntity * pEntity, int iElement) const
 {
 	if (!pProp || !*pProp)
 		return false;
@@ -789,12 +787,12 @@ bool SendProxyManagerInterfaceImpl::IsProxyHookedArray(IExtension * pExt, const 
 	return false;
 }
 
-bool SendProxyManagerInterfaceImpl::IsProxyHookedArrayGamerules(IExtension * pExt, SendProp * pProp, int iElement)
+bool SendProxyManagerInterfaceImpl::IsProxyHookedArrayGamerules(IExtension * pExt, SendProp * pProp, int iElement) const
 {
 	return IsProxyHookedArrayGamerules(pExt, pProp->GetName(), iElement);
 }
 
-bool SendProxyManagerInterfaceImpl::IsProxyHookedArrayGamerules(IExtension * pExt, const char * pProp, int iElement)
+bool SendProxyManagerInterfaceImpl::IsProxyHookedArrayGamerules(IExtension * pExt, const char * pProp, int iElement) const
 {
 	if (!pProp || !*pProp)
 		return false;

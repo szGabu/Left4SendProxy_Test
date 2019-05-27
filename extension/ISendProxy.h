@@ -393,8 +393,8 @@ public: //ISendProxyManager
 	 *
 	 * @return				true, if is hooked, false otherwise
 	 */
-	virtual bool IsProxyHooked(IExtension * pMyself, SendProp * pProp, CBaseEntity * pEntity) = 0;
-	virtual bool IsProxyHooked(IExtension * pMyself, const char * pProp, CBaseEntity * pEntity) = 0;
+	virtual bool IsProxyHooked(IExtension * pMyself, SendProp * pProp, CBaseEntity * pEntity) const = 0;
+	virtual bool IsProxyHooked(IExtension * pMyself, const char * pProp, CBaseEntity * pEntity) const = 0;
 	/*
 	 * Checks if gamerules proxy is hooked
 	 *
@@ -402,8 +402,8 @@ public: //ISendProxyManager
 	 *
 	 * @return				true, if is hooked, false otherwise
 	 */
-	virtual bool IsProxyHookedGamerules(IExtension * pMyself, SendProp * pProp) = 0;
-	virtual bool IsProxyHookedGamerules(IExtension * pMyself, const char * pProp) = 0;
+	virtual bool IsProxyHookedGamerules(IExtension * pMyself, SendProp * pProp) const = 0;
+	virtual bool IsProxyHookedGamerules(IExtension * pMyself, const char * pProp) const = 0;
 	/*
 	 * Checks if proxy array is hooked
 	 *
@@ -413,8 +413,8 @@ public: //ISendProxyManager
 	 *
 	 * @return				true, if is hooked, false otherwise
 	 */
-	virtual bool IsProxyHookedArray(IExtension * pMyself, SendProp * pProp, CBaseEntity * pEntity, int iElement) = 0;
-	virtual bool IsProxyHookedArray(IExtension * pMyself, const char * pProp, CBaseEntity * pEntity, int iElement) = 0;
+	virtual bool IsProxyHookedArray(IExtension * pMyself, SendProp * pProp, CBaseEntity * pEntity, int iElement) const = 0;
+	virtual bool IsProxyHookedArray(IExtension * pMyself, const char * pProp, CBaseEntity * pEntity, int iElement) const = 0;
 	/*
 	 * Checks if gamerules proxy is hooked
 	 *
@@ -423,8 +423,8 @@ public: //ISendProxyManager
 	 *
 	 * @return				true, if is hooked, false otherwise
 	 */
-	virtual bool IsProxyHookedArrayGamerules(IExtension * pMyself, SendProp * pProp, int iElement) = 0;
-	virtual bool IsProxyHookedArrayGamerules(IExtension * pMyself, const char * pProp, int iElement) = 0;
+	virtual bool IsProxyHookedArrayGamerules(IExtension * pMyself, SendProp * pProp, int iElement) const = 0;
+	virtual bool IsProxyHookedArrayGamerules(IExtension * pMyself, const char * pProp, int iElement) const = 0;
 };
 
 #endif

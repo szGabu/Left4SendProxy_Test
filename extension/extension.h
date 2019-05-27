@@ -34,8 +34,9 @@
 
  /*
 	TODO:
-		Implement interface for prop change hooks
-		Add remove listeners for change hooks
+		Implement interface:
+			Add common function for prop change hooks
+			Add remove listeners for prop change hooks
  */
 
 #include "smsdk_ext.h"
@@ -63,6 +64,7 @@ class IServerGameEnts;
 void GlobalProxy(const SendProp *pProp, const void *pStructBase, const void* pData, DVariant *pOut, int iElement, int objectID);
 void GlobalProxyGamerules(const SendProp *pProp, const void *pStructBase, const void* pData, DVariant *pOut, int iElement, int objectID);
 bool IsPropValid(SendProp *, PropType);
+char * strncpynull(char * pDestination, const char * pSource, size_t szCount);
 
 struct ListenerCallbackInfo
 {
@@ -75,7 +77,7 @@ struct CallBackInfo
 {
 	CallBackInfo() { memset(this, 0, sizeof(CallBackInfo)); }
 	CallBackInfo(const CallBackInfo & rObj) { memcpy(this, &rObj, sizeof(CallBackInfo)); }
-	CallBackInfo & operator=(const CallBackInfo & rObj) { return CallBackInfo(rObj); }
+	const CallBackInfo & operator=(const CallBackInfo & rObj) { return *(new CallBackInfo(rObj)); }
 	void *									pOwner; //Pointer to plugin context or IExtension *
 	void *									pCallback;
 	CallBackType							iCallbackType;
@@ -117,7 +119,6 @@ struct SendPropHookGamerules
 	SendVarProxyFn							pRealProxy;
 	PropType								PropType;
 	int										Element{0};
-	IExtensionInterface *					pExtensionAPI{nullptr};
 	CUtlVector<ListenerCallbackInfo> *		vListeners;
 };
 
@@ -176,7 +177,7 @@ class SendProxyManager :
 	public ISMEntityListener
 {
 public: //sm
-	virtual bool SDK_OnLoad(char *error, size_t maxlength, bool late);
+	virtual bool SDK_OnLoad(char * error, size_t maxlength, bool late);
 	virtual void SDK_OnUnload();
 	virtual void SDK_OnAllLoaded();
 	
@@ -184,7 +185,7 @@ public: //sm
 	virtual void OnCoreMapStart(edict_t *, int, int);
 
 public: //other
-	void OnPluginUnloaded(IPlugin *plugin);
+	virtual void OnPluginUnloaded(IPlugin * plugin);
 	//returns true upon success
 	bool AddHookToList(SendPropHook hook);
 	bool AddHookToListGamerules(SendPropHookGamerules hook);
@@ -200,10 +201,10 @@ public: //other
 	void UnhookChangeGamerules(int i, CallBackInfo * pInfo);
 	virtual int GetClientCount() const;
 public: // ISMEntityListener
-	virtual void OnEntityDestroyed(CBaseEntity *pEntity);
+	virtual void OnEntityDestroyed(CBaseEntity * pEntity);
 public:
 #if defined SMEXT_CONF_METAMOD
-	virtual bool SDK_OnMetamodLoad(ISmmAPI *ismm, char *error, size_t maxlen, bool late);
+	virtual bool SDK_OnMetamodLoad(ISmmAPI * ismm, char * error, size_t maxlen, bool late);
 	//virtual bool SDK_OnMetamodUnload(char *error, size_t maxlength);
 	//virtual bool SDK_OnMetamodPauseChange(bool paused, char *error, size_t maxlength);
 #endif

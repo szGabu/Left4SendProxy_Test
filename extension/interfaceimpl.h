@@ -41,8 +41,8 @@ void CallListenersForHookIDGamerules(int iID);
 class SendProxyManagerInterfaceImpl : public ISendProxyManager
 {
 public: //SMInterface
-	virtual const char * GetInterfaceName();
-	virtual unsigned int GetInterfaceVersion();
+	virtual const char * GetInterfaceName() override;
+	virtual unsigned int GetInterfaceVersion() override;
 public: //interface impl:
 	virtual bool HookProxy(IExtension *, SendProp *, CBaseEntity *, PropType, CallBackType, void *) override;
 	virtual bool HookProxy(IExtension *, const char *, CBaseEntity *, PropType, CallBackType, void *) override;
@@ -78,14 +78,14 @@ public: //interface impl:
 	virtual bool RemoveUnhookListenerArrayGamerules(IExtension *, SendProp *, int, CallBackType, void *, ISendProxyUnhookListener *) override;
 	virtual bool RemoveUnhookListenerArrayGamerules(IExtension *, const char *, int, CallBackType, void *, ISendProxyUnhookListener *) override;
 	//checkers
-	virtual bool IsProxyHooked(IExtension *, SendProp *, CBaseEntity *) override;
-	virtual bool IsProxyHooked(IExtension *, const char *, CBaseEntity *) override;
-	virtual bool IsProxyHookedGamerules(IExtension *, SendProp *) override;
-	virtual bool IsProxyHookedGamerules(IExtension *, const char *) override;
-	virtual bool IsProxyHookedArray(IExtension *, SendProp *, CBaseEntity *, int) override;
-	virtual bool IsProxyHookedArray(IExtension *, const char *, CBaseEntity *, int) override;
-	virtual bool IsProxyHookedArrayGamerules(IExtension *, SendProp *, int) override;
-	virtual bool IsProxyHookedArrayGamerules(IExtension *, const char *, int) override;
+	virtual bool IsProxyHooked(IExtension *, SendProp *, CBaseEntity *) const override;
+	virtual bool IsProxyHooked(IExtension *, const char *, CBaseEntity *) const override;
+	virtual bool IsProxyHookedGamerules(IExtension *, SendProp *) const override;
+	virtual bool IsProxyHookedGamerules(IExtension *, const char *) const override;
+	virtual bool IsProxyHookedArray(IExtension *, SendProp *, CBaseEntity *, int) const override;
+	virtual bool IsProxyHookedArray(IExtension *, const char *, CBaseEntity *, int) const override;
+	virtual bool IsProxyHookedArrayGamerules(IExtension *, SendProp *, int) const override;
+	virtual bool IsProxyHookedArrayGamerules(IExtension *, const char *, int) const override;
 
 	/*
 	TODO:

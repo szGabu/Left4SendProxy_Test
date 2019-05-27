@@ -425,7 +425,7 @@ void Hook_GameFrame(bool simulating)
 					{
 						CallChangeCallbacks(&g_ChangeHooks[i], (void *)g_ChangeHooks[i].cLastValue, (void *)szCurrent);
 						memset(g_ChangeHooks[i].cLastValue, 0, sizeof(g_ChangeHooks[i].cLastValue));
-						strncpy(g_ChangeHooks[i].cLastValue, szCurrent, sizeof(g_ChangeHooks[i].cLastValue));
+						strncpynull(g_ChangeHooks[i].cLastValue, szCurrent, sizeof(g_ChangeHooks[i].cLastValue));
 					}
 					break;
 				}
@@ -485,7 +485,7 @@ void Hook_GameFrame(bool simulating)
 					{
 						CallChangeGamerulesCallbacks(&g_ChangeHooksGamerules[i], (void *)g_ChangeHooksGamerules[i].cLastValue, (void *)szCurrent);
 						memset(g_ChangeHooks[i].cLastValue, 0, sizeof(g_ChangeHooks[i].cLastValue));
-						strncpy(g_ChangeHooks[i].cLastValue, szCurrent, sizeof(g_ChangeHooks[i].cLastValue));
+						strncpynull(g_ChangeHooks[i].cLastValue, szCurrent, sizeof(g_ChangeHooks[i].cLastValue));
 					}
 					break;
 				}
@@ -765,7 +765,7 @@ bool SendProxyManager::AddChangeHookToList(PropChangeHook sHook, CallBackInfo * 
 		{
 		case PropType::Prop_Int: sHook.iLastValue = *(int *)((unsigned char *)pEntity + sHook.Offset); break;
 		case PropType::Prop_Float: sHook.flLastValue = *(float *)((unsigned char*)pEntity + sHook.Offset); break;
-		case PropType::Prop_String: strncpy(sHook.cLastValue, (const char *)((unsigned char *)pEntity + sHook.Offset), sizeof(sHook.cLastValue)); break;
+		case PropType::Prop_String: strncpynull(sHook.cLastValue, (const char *)((unsigned char *)pEntity + sHook.Offset), sizeof(sHook.cLastValue)); break;
 		case PropType::Prop_Vector: sHook.vecLastValue = *(Vector *)((unsigned char *)pEntity + sHook.Offset); break;
 		default: return false;
 		}
@@ -808,7 +808,7 @@ bool SendProxyManager::AddChangeHookToListGamerules(PropChangeHookGamerules sHoo
 		{
 		case PropType::Prop_Int: sHook.iLastValue = *(int *)((unsigned char *)g_pGameRules + sHook.Offset); break;
 		case PropType::Prop_Float: sHook.flLastValue = *(float *)((unsigned char*)g_pGameRules + sHook.Offset); break;
-		case PropType::Prop_String: strncpy(sHook.cLastValue, (const char *)((unsigned char *)g_pGameRules + sHook.Offset), sizeof(sHook.cLastValue)); break;
+		case PropType::Prop_String: strncpynull(sHook.cLastValue, (const char *)((unsigned char *)g_pGameRules + sHook.Offset), sizeof(sHook.cLastValue)); break;
 		case PropType::Prop_Vector: sHook.vecLastValue = *(Vector *)((unsigned char *)g_pGameRules + sHook.Offset); break;
 		default: return false;
 		}
@@ -1230,7 +1230,7 @@ bool CallString(SendPropHook hook, char **ret)
 		case CallBackType::Callback_PluginFunction:
 		{
 			IPluginFunction *callback = (IPluginFunction *)hook.sCallbackInfo.pCallback;
-			strncpy(value, *ret, 4096);
+			strncpynull(value, *ret, 4096);
 			cell_t result = Pl_Continue;
 			callback->PushCell(hook.objectID);
 			callback->PushString(hook.pVar->GetName());
@@ -1248,7 +1248,7 @@ bool CallString(SendPropHook hook, char **ret)
 		case CallBackType::Callback_CPPCallbackInterface:
 		{
 			ISendProxyCallbacks * pCallbacks = (ISendProxyCallbacks *)hook.sCallbackInfo.pCallback;
-			strncpy(value, *ret, 4096);
+			strncpynull(value, *ret, 4096);
 			bool bChange = pCallbacks->OnEntityPropProxyFunctionCalls(gameents->EdictToBaseEntity(hook.pEnt), hook.pVar, (CBasePlayer *)gamehelpers->ReferenceToEntity(g_iCurrentClientIndexInLoop + 1), (void *)value, hook.PropType, hook.Element);
 			if (bChange)
 			{
@@ -1280,7 +1280,7 @@ bool CallStringGamerules(SendPropHookGamerules hook, char **ret)
 			}
 			
 			IPluginFunction *callback = (IPluginFunction *)hook.sCallbackInfo.pCallback;
-			strncpy(value, *ret, 4096);
+			strncpynull(value, *ret, 4096);
 			cell_t result = Pl_Continue;
 			callback->PushString(hook.pVar->GetName());
 			callback->PushStringEx(value, 4096, SM_PARAM_STRING_UTF8 | SM_PARAM_STRING_COPY, SM_PARAM_COPYBACK);
@@ -1300,7 +1300,7 @@ bool CallStringGamerules(SendPropHookGamerules hook, char **ret)
 			if(!pGamerules)
 				return false;
 			ISendProxyCallbacks * pCallbacks = (ISendProxyCallbacks *)hook.sCallbackInfo.pCallback;
-			strncpy(value, *ret, 4096);
+			strncpynull(value, *ret, 4096);
 			bool bChange = pCallbacks->OnGamerulesPropProxyFunctionCalls(hook.pVar, (CBasePlayer *)gamehelpers->ReferenceToEntity(g_iCurrentClientIndexInLoop + 1), (void *)value, hook.PropType, hook.Element);
 			if (bChange)
 			{
@@ -1434,6 +1434,7 @@ void GlobalProxy(const SendProp *pProp, const void *pStructBase, const void * pD
 					{
 						long data = result;
 						g_Hooks[i].pRealProxy(pProp, pStructBase, &data, pOut, iElement, objectID);
+						return; // If somebody already handled this call, do not call other hooks for this entity & prop
 					}
 					else
 					{
@@ -1449,6 +1450,7 @@ void GlobalProxy(const SendProp *pProp, const void *pStructBase, const void * pD
 					if (CallFloat(g_Hooks[i], &result))
 					{
 						g_Hooks[i].pRealProxy(pProp, pStructBase, &result, pOut, iElement, objectID);
+						return; // If somebody already handled this call, do not call other hooks for this entity & prop
 					}
 					else
 					{
@@ -1466,6 +1468,7 @@ void GlobalProxy(const SendProp *pProp, const void *pStructBase, const void * pD
 					if (CallString(g_Hooks[i], const_cast<char **>(&result)))
 					{
 						g_Hooks[i].pRealProxy(pProp, pStructBase, &result, pOut, iElement, objectID);
+						return; // If somebody already handled this call, do not call other hooks for this entity & prop
 					}
 					else
 					{
@@ -1481,6 +1484,7 @@ void GlobalProxy(const SendProp *pProp, const void *pStructBase, const void * pD
 					if (CallVector(g_Hooks[i], result))
 					{
 						g_Hooks[i].pRealProxy(pProp, pStructBase, &result, pOut, iElement, objectID);
+						return; // If somebody already handled this call, do not call other hooks for this entity & prop
 					}
 					else
 					{
@@ -1527,6 +1531,7 @@ void GlobalProxyGamerules(const SendProp *pProp, const void *pStructBase, const 
 					{
 						long data = result;
 						g_HooksGamerules[i].pRealProxy(pProp, pStructBase, &data, pOut, iElement, objectID);
+						return; // If somebody already handled this call, do not call other hooks for this entity & prop
 					}
 					else
 					{
@@ -1542,6 +1547,7 @@ void GlobalProxyGamerules(const SendProp *pProp, const void *pStructBase, const 
 					if (CallFloatGamerules(g_HooksGamerules[i], &result))
 					{
 						g_HooksGamerules[i].pRealProxy(pProp, pStructBase, &result, pOut, iElement, objectID);
+						return; // If somebody already handled this call, do not call other hooks for this entity & prop
 					} 
 					else
 					{
@@ -1559,6 +1565,7 @@ void GlobalProxyGamerules(const SendProp *pProp, const void *pStructBase, const 
 					if (CallStringGamerules(g_HooksGamerules[i], const_cast<char **>(&result)))
 					{
 						g_HooksGamerules[i].pRealProxy(pProp, pStructBase, &result, pOut, iElement, objectID);
+						return; // If somebody already handled this call, do not call other hooks for this entity & prop
 					}
 					else
 					{
@@ -1574,6 +1581,7 @@ void GlobalProxyGamerules(const SendProp *pProp, const void *pStructBase, const 
 					if (CallVectorGamerules(g_HooksGamerules[i], result))
 					{
 						g_HooksGamerules[i].pRealProxy(pProp, pStructBase, &result, pOut, iElement, objectID);
+						return; // If somebody already handled this call, do not call other hooks for this entity & prop
 					}
 					else
 					{
@@ -1650,4 +1658,11 @@ bool IsPropValid(SendProp * pProp, PropType iType)
 		}
 	}
 	return false;
+}
+
+char * strncpynull(char * pDestination, const char * pSource, size_t szCount)
+{
+	strncpy(pDestination, pSource, szCount);
+	pDestination[szCount - 1] = 0;
+	return pDestination;
 }
