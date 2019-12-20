@@ -225,7 +225,7 @@ class ExtensionConfig(object):
       if cxx.like('gcc'):
         cxx.cflags += ['-O3']
       elif cxx.like('msvc'):
-        cxx.cflags += ['/Ox', '/Zo', '/Oi', '/GL', '\Ot']
+        cxx.cflags += ['/Ox', '/Zo', '/Oi', '/GL', '/Ot']
         cxx.linkflags += ['/OPT:ICF', '/OPT:REF']
 
     # Debugging
