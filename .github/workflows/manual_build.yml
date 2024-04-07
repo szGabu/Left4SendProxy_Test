@@ -95,7 +95,7 @@ jobs:
           echo "TAG=$(curl -s "https://api.github.com/repos/${{ github.repository }}/tags" | jq -r ".[0].name")" >> $GITHUB_ENV
 
       - name: Zip sourcemod directory
-        run: zip -jr /tmp/linux_release.zip /tmp/Left4SendProxy
+        run: (cd /tmp/Left4SendProxy/sourcemod/ && zip -r /tmp/linux_release.zip .)
 
         
       - name: Create Release
