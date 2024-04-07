@@ -69,13 +69,13 @@ jobs:
 
       - name: Copy to addons directory
         run: |
-          cp -r /home/runner/work/left4sendproxy/left4sendproxy/extension/build/package/addons/sourcemod/extensions /home/runner/work/left4sendproxy/left4sendproxy/addons/sourcemod
+          cp -r /home/runner/work/Left4SendProxy/Left4SendProxy/extension/build/package/addons/sourcemod/extensions /home/runner/work/Left4SendProxy/Left4SendProxy/addons/sourcemod
 
       - name: Upload Binary (Package)
         uses: actions/upload-artifact@v2
         with:
           name: sendproxy
-          path: /home/runner/work/left4sendproxy/left4sendproxy/addons
+          path: /home/runner/work/Left4SendProxy/Left4SendProxy/addons
 
   release:
     name: Create Release
@@ -87,7 +87,7 @@ jobs:
         uses: actions/download-artifact@v2
         with:
           name: sendproxy
-          path: /tmp/left4sendproxy
+          path: /tmp/Left4SendProxy
 
       - name: Get latest tag
         id: tag
@@ -95,7 +95,7 @@ jobs:
           echo "TAG=$(curl -s "https://api.github.com/repos/${{ github.repository }}/tags" | jq -r ".[0].name")" >> $GITHUB_ENV
 
       - name: Zip sourcemod directory
-        run: zip -r /tmp/linux_release.zip /tmp/left4sendproxy/sourcemod
+        run: zip -jr /tmp/linux_release.zip /tmp/Left4SendProxy
 
         
       - name: Create Release
