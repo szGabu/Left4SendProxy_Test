@@ -56,7 +56,7 @@ jobs:
           mkdir -p ../../addons/sourcemod
           cp -r package/addons/sourcemod/extensions ../../addons/sourcemod
 
-      - name: Build Extension (Windows)
+      - name: Build Extension (Windows - 32-bit)
         if: runner.os == 'Windows'
         shell: cmd
         run: |
@@ -68,8 +68,8 @@ jobs:
           REM Find the Visual Studio installation path
           FOR /F "tokens=*" %%i IN ('"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath') DO SET InstallDir=%%i
 
-          REM Set up MSVC environment
-          call "%InstallDir%\Common7\Tools\VsDevCmd.bat" -arch=amd64
+          REM Set up MSVC environment for 32-bit (x86) build
+          call "%InstallDir%\Common7\Tools\VsDevCmd.bat" -arch=x86
 
           REM Proceed with the build
           mkdir alliedmodders
