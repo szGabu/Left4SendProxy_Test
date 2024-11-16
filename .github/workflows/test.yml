@@ -96,7 +96,7 @@ jobs:
           cp -r ./extension/build/package/addons/sourcemod/extensions addons/sourcemod
 
       - name: Upload Binary (Package)
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: sendproxy-${{ matrix.os }}
           path: ./addons
@@ -108,13 +108,13 @@ jobs:
 
     steps:
       - name: Download Artifact (Linux)
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v4
         with:
           name: sendproxy-ubuntu-latest
           path: /tmp/Left4SendProxy/linux
 
       - name: Download Artifact (Windows)
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v4
         with:
           name: sendproxy-windows-latest
           path: /tmp/Left4SendProxy/windows
