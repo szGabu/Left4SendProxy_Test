@@ -14,7 +14,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v2
 
-      - name: Setup Environment
+      - name: Set GITHUB_SHA_SHORT
         shell: bash
         run: |
           echo "GITHUB_SHA_SHORT=${GITHUB_SHA::7}" >> $GITHUB_ENV
@@ -30,19 +30,22 @@ jobs:
 
       - name: Install Dependencies (Windows)
         if: runner.os == 'Windows'
-        shell: cmd
+        shell: pwsh
         run: |
           python --version
           pip install --upgrade pip
           pip install pywin32
-          echo "CC=cl.exe" >> %GITHUB_ENV%
-          echo "CXX=cl.exe" >> %GITHUB_ENV%
+          echo "CC=cl.exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "CXX=cl.exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Setup MSVC Environment (Windows)
         if: runner.os == 'Windows'
         shell: cmd
         run: |
-          call "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat" -arch=amd64
+          FOR /F "tokens=*" %%i IN ('"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath') DO SET InstallDir=%%i
+          call "%InstallDir%\Common7\Tools\VsDevCmd.bat" -arch=amd64
+          set CC=cl.exe
+          set CXX=cl.exe
 
       - name: Prepare Alliedmodders Directory
         shell: bash
@@ -109,12 +112,14 @@ jobs:
     steps:
       - name: Download Artifact (Linux)
         uses: actions/download-artifact@v4
+        if: always()
         with:
           name: sendproxy-ubuntu-latest
           path: /tmp/Left4SendProxy/linux
 
       - name: Download Artifact (Windows)
         uses: actions/download-artifact@v4
+        if: always()
         with:
           name: sendproxy-windows-latest
           path: /tmp/Left4SendProxy/windows
@@ -122,7 +127,7 @@ jobs:
       - name: Get latest tag
         id: tag
         run: |
-          echo "TAG=$(curl -s "https://api.github.com/repos/${{ github.repository }}/tags" | jq -r ".[0].name")" >> $GITHUB_ENV
+          echo "TAG=$(git describe --tags --abbrev=0)" >> $GITHUB_ENV
 
       - name: Zip sourcemod directory (Linux)
         run: |
