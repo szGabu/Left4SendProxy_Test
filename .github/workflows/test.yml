@@ -28,76 +28,73 @@ jobs:
           echo "CC=clang" >> $GITHUB_ENV
           echo "CXX=clang++" >> $GITHUB_ENV
 
-      - name: Install Dependencies (Windows)
+      - name: Build Extension (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          mkdir alliedmodders
+
+          cd alliedmodders
+          git clone --recursive https://github.com/alliedmodders/sourcemod -b 1.11-dev
+
+          git clone --mirror https://github.com/alliedmodders/hl2sdk hl2sdk-proxy-repo
+          git clone hl2sdk-proxy-repo hl2sdk-l4d2 -b l4d2
+          git clone hl2sdk-proxy-repo hl2sdk-l4d -b l4d
+
+          git clone https://github.com/alliedmodders/metamod-source mmsource-1.10 -b 1.10-dev
+
+          git clone https://github.com/alliedmodders/ambuild
+          pip3 install ./ambuild
+
+          cd ../extension
+          mkdir build
+          cd build
+          python3 ../configure.py --hl2sdk-root=../../alliedmodders --sm-path=../../alliedmodders/sourcemod --mms-path=../../alliedmodders/mmsource-1.10 --sdks l4d,l4d2
+
+          ambuild
+
+          mkdir -p ../../addons/sourcemod
+          cp -r package/addons/sourcemod/extensions ../../addons/sourcemod
+
+      - name: Build Extension (Windows)
         if: runner.os == 'Windows'
-        shell: pwsh
+        shell: cmd
         run: |
           python --version
           python -m pip install --upgrade pip
           pip install pywin32
           pip install setuptools wheel
-          echo "CC=cl.exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          echo "CXX=cl.exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: Setup MSVC Environment (Windows)
-        if: runner.os == 'Windows'
-        shell: cmd
-        run: |
+          REM Find the Visual Studio installation path
           FOR /F "tokens=*" %%i IN ('"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath') DO SET InstallDir=%%i
+
+          REM Set up MSVC environment
           call "%InstallDir%\Common7\Tools\VsDevCmd.bat" -arch=amd64
-          set CC=cl.exe
-          set CXX=cl.exe
 
-      - name: Prepare Alliedmodders Directory
-        shell: bash
-        run: mkdir alliedmodders
+          REM Proceed with the build
+          mkdir alliedmodders
 
-      - name: Prepare Sourcemod
-        shell: bash
-        run: |
           cd alliedmodders
           git clone --recursive https://github.com/alliedmodders/sourcemod -b 1.11-dev
 
-      - name: Prepare L4D SDK
-        shell: bash
-        run: |
-          cd alliedmodders
           git clone --mirror https://github.com/alliedmodders/hl2sdk hl2sdk-proxy-repo
           git clone hl2sdk-proxy-repo hl2sdk-l4d2 -b l4d2
           git clone hl2sdk-proxy-repo hl2sdk-l4d -b l4d
 
-      - name: Prepare Metamod Source
-        shell: bash
-        run: |
-          cd alliedmodders
           git clone https://github.com/alliedmodders/metamod-source mmsource-1.10 -b 1.10-dev
 
-      - name: Install AMBuild
-        shell: bash
-        run: |
-          cd alliedmodders
           git clone https://github.com/alliedmodders/ambuild
           pip install ./ambuild
 
-      - name: Configure AMBuild
-        shell: bash
-        run: |
-          cd extension
+          cd ..\extension
           mkdir build
           cd build
-          python ../configure.py --hl2sdk-root=../../alliedmodders --sm-path=../../alliedmodders/sourcemod --mms-path=../../alliedmodders/mmsource-1.10 --sdks l4d,l4d2
+          python ..\configure.py --hl2sdk-root=..\..\alliedmodders --sm-path=..\..\alliedmodders\sourcemod --mms-path=..\..\alliedmodders\mmsource-1.10 --sdks l4d,l4d2
 
-      - name: Run AMBuild
-        shell: bash
-        run: |
-          cd extension/build
           ambuild
 
-      - name: Copy to addons directory
-        shell: bash
-        run: |
-          mkdir -p addons/sourcemod
-          cp -r ./extension/build/package/addons/sourcemod/extensions addons/sourcemod
+          mkdir ..\..\addons\sourcemod\extensions
+          xcopy /E /I /Y package\addons\sourcemod\extensions ..\..\addons\sourcemod\extensions
 
       - name: Upload Binary (Package)
         uses: actions/upload-artifact@v4
