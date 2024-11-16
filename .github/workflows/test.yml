@@ -1,0 +1,79 @@
+
+        shell: bash
+        run: |
+          cd alliedmodders
+          git clone https://github.com/alliedmodders/metamod-source mmsource-1.10 -b 1.10-dev
+
+      - name: Install AMBuild
+        shell: bash
+        run: |
+          cd alliedmodders
+          git clone https://github.com/alliedmodders/ambuild
+          pip install ./ambuild
+
+      - name: Configure AMBuild
+        shell: bash
+        run: |
+          cd extension
+          mkdir build
+          cd build
+          python ../configure.py --hl2sdk-root=../../alliedmodders --sm-path=../../alliedmodders/sourcemod --mms-path=../../alliedmodders/mmsource-1.10 --sdks l4d,l4d2
+
+      - name: Run AMBuild
+        shell: bash
+        run: |
+          cd extension/build
+          ambuild
+
+      - name: Copy to addons directory
+        shell: bash
+        run: |
+          mkdir -p addons/sourcemod
+          cp -r ./extension/build/package/addons/sourcemod/extensions addons/sourcemod
+
+      - name: Upload Binary (Package)
+        uses: actions/upload-artifact@v2
+        with:
+          name: sendproxy-${{ matrix.os }}
+          path: ./addons
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download Artifact (Linux)
+        uses: actions/download-artifact@v2
+        with:
+          name: sendproxy-ubuntu-latest
+          path: /tmp/Left4SendProxy/linux
+
+      - name: Download Artifact (Windows)
+        uses: actions/download-artifact@v2
+        with:
+          name: sendproxy-windows-latest
+          path: /tmp/Left4SendProxy/windows
+
+      - name: Get latest tag
+        id: tag
+        run: |
+          echo "TAG=$(curl -s "https://api.github.com/repos/${{ github.repository }}/tags" | jq -r ".[0].name")" >> $GITHUB_ENV
+
+      - name: Zip sourcemod directory (Linux)
+        run: |
+          (cd /tmp/Left4SendProxy/linux/sourcemod/ && zip -r /tmp/linux_release.zip .)
+
+      - name: Zip sourcemod directory (Windows)
+        run: |
+          (cd /tmp/Left4SendProxy/windows/sourcemod/ && zip -r /tmp/windows_release.zip .)
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ env.TAG }}
+          files: |
+            /tmp/linux_release.zip
+            /tmp/windows_release.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
