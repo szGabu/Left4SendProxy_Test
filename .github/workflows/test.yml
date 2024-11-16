@@ -1,4 +1,68 @@
+name: Manual Build
+on:
+  workflow_dispatch:
 
+jobs:
+  build:
+    name: Build Project
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v2
+
+      - name: Setup Environment
+        shell: bash
+        run: |
+          echo "GITHUB_SHA_SHORT=${GITHUB_SHA::7}" >> $GITHUB_ENV
+
+      - name: Install Dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y clang g++-multilib git python3-pip
+          echo "CC=clang" >> $GITHUB_ENV
+          echo "CXX=clang++" >> $GITHUB_ENV
+
+      - name: Install Dependencies (Windows)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          python --version
+          pip install --upgrade pip
+          pip install pywin32
+          echo "CC=cl.exe" >> %GITHUB_ENV%
+          echo "CXX=cl.exe" >> %GITHUB_ENV%
+
+      - name: Setup MSVC Environment (Windows)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat" -arch=amd64
+
+      - name: Prepare Alliedmodders Directory
+        shell: bash
+        run: mkdir alliedmodders
+
+      - name: Prepare Sourcemod
+        shell: bash
+        run: |
+          cd alliedmodders
+          git clone --recursive https://github.com/alliedmodders/sourcemod -b 1.11-dev
+
+      - name: Prepare L4D SDK
+        shell: bash
+        run: |
+          cd alliedmodders
+          git clone --mirror https://github.com/alliedmodders/hl2sdk hl2sdk-proxy-repo
+          git clone hl2sdk-proxy-repo hl2sdk-l4d2 -b l4d2
+          git clone hl2sdk-proxy-repo hl2sdk-l4d -b l4d
+
+      - name: Prepare Metamod Source
         shell: bash
         run: |
           cd alliedmodders
